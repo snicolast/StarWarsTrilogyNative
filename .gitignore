@@ -5,6 +5,7 @@ out/
 __pycache__/
 *.pyc
 StarWarsTrilogy.exe
+Star Wars Trilogy.app/
 save/
 textures/
 *.dll

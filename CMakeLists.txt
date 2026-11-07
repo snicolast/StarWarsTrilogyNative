@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(StarWarsTrilogyNative C CXX)
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +25,10 @@ set(SHADER_DIR ${CMAKE_SOURCE_DIR}/src/video/shaders)
 set(SHADER_OUT ${CMAKE_BINARY_DIR}/shaders)
 file(GLOB SHADER_SOURCES ${SHADER_DIR}/*.vert ${SHADER_DIR}/*.frag ${SHADER_DIR}/*.comp)
 set(SHADER_HEADERS)
+set(SHADER_DEFINES)
+if(APPLE)
+    set(SHADER_DEFINES -DPLATFORM_MAC)   # no ray tracing there: the shadow map and MSAA carry the picture
+endif()
 foreach(src ${SHADER_SOURCES})
     get_filename_component(name ${src} NAME)
     string(REPLACE "." "_" var ${name})
@@ -30,7 +37,7 @@ foreach(src ${SHADER_SOURCES})
     # in any of them rebuilds it (no list of includes to keep by hand)
     add_custom_command(OUTPUT ${out}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT}
-        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 --vn spv_${var} --depfile ${out}.d -o ${out} ${src}
+        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 ${SHADER_DEFINES} --vn spv_${var} --depfile ${out}.d -o ${out} ${src}
         DEPENDS ${src} glslang-standalone
         DEPFILE ${out}.d
         COMMENT "Shader ${name}")
@@ -42,7 +49,7 @@ foreach(name r3d ao)
     set(out ${SHADER_OUT}/${name}_rt.frag.h)
     add_custom_command(OUTPUT ${out}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT}
-        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 -DRAY_TRACING --vn spv_${name}_rt_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
+        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 ${SHADER_DEFINES} -DRAY_TRACING --vn spv_${name}_rt_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
         DEPENDS ${SHADER_DIR}/${name}.frag glslang-standalone
         DEPFILE ${out}.d
         COMMENT "Shader ${name}.frag (ray tracing)")
@@ -50,8 +57,9 @@ foreach(name r3d ao)
 endforeach()
 add_custom_target(shaders DEPENDS ${SHADER_HEADERS})
 
-# SDL3, for the gamepads only (no window, sound or rendering of its own):
-# downloaded once at configure time and linked statically
+# SDL3, for the gamepads only (no window, sound or rendering of its own; on
+# macOS the window, the mouse and keyboard and the sound too): downloaded once
+# at configure time and linked statically
 include(FetchContent)
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
@@ -59,7 +67,11 @@ set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
-foreach(sub AUDIO VIDEO GPU RENDER CAMERA POWER DIALOG TRAY)
+set(SDL_UNUSED GPU RENDER CAMERA POWER DIALOG TRAY)
+if(NOT APPLE)
+    list(APPEND SDL_UNUSED AUDIO VIDEO)
+endif()
+foreach(sub ${SDL_UNUSED})
     set(SDL_${sub} OFF CACHE BOOL "" FORCE)
 endforeach()
 FetchContent_Declare(SDL3
@@ -78,6 +90,17 @@ FetchContent_Declare(miniz
 FetchContent_MakeAvailable(miniz)   # the release zip has no CMake project: just the two files
 set(MINIZ_DIR ${miniz_SOURCE_DIR})
 
+# MoltenVK, Vulkan on Metal (macOS): downloaded once at configure time and
+# copied next to the program, where VkPresenter loads it
+if(APPLE)
+    FetchContent_Declare(MoltenVK
+        URL https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
+        URL_HASH SHA256=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(MoltenVK)
+    set(MOLTENVK_DYLIB ${moltenvk_SOURCE_DIR}/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib)
+endif()
+
 # Musashi (68000 of the sound board): m68kmake generates the opcode tables
 set(MUSASHI_DIR ${CMAKE_SOURCE_DIR}/third_party/musashi)
 set(MUSASHI_GEN ${CMAKE_BINARY_DIR}/musashi)
@@ -92,6 +115,28 @@ add_custom_command(OUTPUT ${MUSASHI_GEN}/m68kops.c ${MUSASHI_GEN}/m68kops.h
     DEPENDS m68kmake ${MUSASHI_DIR}/m68k_in.c
     COMMENT "Musashi opcode tables")
 
+# What each system does in its own way
+set(MAC_DIR ${CMAKE_SOURCE_DIR}/src/platform/mac)
+if(APPLE)
+    set(PLATFORM_SOURCES
+        ${MAC_DIR}/win32_mac.mm
+        ${MAC_DIR}/vk_window_mac.cpp
+        ${MAC_DIR}/raw_mice_mac.cpp
+        ${MAC_DIR}/audio_out_mac.cpp
+        ${MAC_DIR}/dlss_mac.cpp
+        ${MAC_DIR}/image_io_mac.mm
+        ${MAC_DIR}/menu_music_mac.mm
+        ${MAC_DIR}/splash_video_mac.mm)
+else()
+    set(PLATFORM_SOURCES
+        src/runtime/raw_mice.cpp
+        src/audio/audio_out.cpp
+        src/video/dlss.cpp
+        src/ui/menu_music.cpp
+        src/ui/splash_video.cpp
+        res/app.rc)
+endif()
+
 add_executable(StarWarsTrilogy
     src/runtime/runtime.cpp
     src/runtime/app.cpp
@@ -103,7 +148,6 @@ add_executable(StarWarsTrilogy
     src/runtime/drive_board.cpp
     third_party/z80/z80.c
     src/runtime/inputs.cpp
-    src/runtime/raw_mice.cpp
     src/runtime/gamepad.cpp
     src/runtime/scsi53c810.cpp
     src/runtime/stats.cpp
@@ -117,13 +161,10 @@ add_executable(StarWarsTrilogy
     src/video/sky_pack.cpp
     src/video/text_hd.cpp
     src/video/image_io.cpp
-    src/video/dlss.cpp
     src/video/vk_presenter.cpp
     src/video/ui_overlay.cpp
     src/ui/frontend.cpp
     src/ui/news.cpp
-    src/ui/menu_music.cpp
-    src/ui/splash_video.cpp
     src/video/r3d_state.cpp
     src/video/r3d_scene.cpp
     src/video/r3d_screen.cpp
@@ -133,7 +174,6 @@ add_executable(StarWarsTrilogy
     third_party/volk/volk.c
     ${MUSASHI_DIR}/m68kcpu.c
     ${MUSASHI_DIR}/softfloat/softfloat.c
-    src/audio/audio_out.cpp
     src/audio/audio_stream.cpp
     src/audio/scsp.cpp
     src/audio/sound_board.cpp
@@ -141,7 +181,7 @@ add_executable(StarWarsTrilogy
     ${MUSASHI_DIR}/m68kdasm.c
     ${MUSASHI_GEN}/m68kops.c
     ${GEN_SOURCES}
-    res/app.rc
+    ${PLATFORM_SOURCES}
 )
 add_dependencies(StarWarsTrilogy shaders)
 target_include_directories(StarWarsTrilogy PRIVATE
@@ -159,9 +199,29 @@ target_include_directories(StarWarsTrilogy PRIVATE
     third_party/minimp3
 )
 # volk loads vulkan-1.dll at runtime: the SDK is not needed
-target_compile_definitions(StarWarsTrilogy PRIVATE VK_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR)
-target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static winmm ole32 oleaut32 windowscodecs mfplat mfuuid gdi32 dwmapi shell32 winhttp
-    ${CMAKE_SOURCE_DIR}/third_party/ngx/lib/nvsdk_ngx_d.lib)
+target_compile_definitions(StarWarsTrilogy PRIVATE VK_NO_PROTOTYPES)
+if(APPLE)
+    target_compile_definitions(StarWarsTrilogy PRIVATE VK_USE_PLATFORM_METAL_EXT)
+    target_include_directories(StarWarsTrilogy PRIVATE ${MAC_DIR} src/audio src/ui)
+    target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static
+        "-framework Foundation" "-framework CoreGraphics" "-framework CoreText" "-framework CoreVideo"
+        "-framework CoreMedia" "-framework ImageIO" "-framework UniformTypeIdentifiers"
+        "-framework AVFoundation" "-framework Accelerate")
+    # The windows.h, compat.h and the rest of the Win32 names for every file.
+    # As MSVC builds it for Windows: a*b+c stays two operations (the game's
+    # floating point must not change), memory of any type can be read as any
+    # other and integers wrap around
+    set(MAC_OPTIONS -ffp-contract=off -fno-strict-aliasing -fwrapv)
+    target_compile_options(StarWarsTrilogy PRIVATE ${MAC_OPTIONS}
+        "$<$<COMPILE_LANGUAGE:CXX,OBJCXX>:SHELL:-include ${MAC_DIR}/compat.h>"
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    add_custom_command(TARGET StarWarsTrilogy POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MOLTENVK_DYLIB} $<TARGET_FILE_DIR:StarWarsTrilogy>/libMoltenVK.dylib)
+else()
+    target_compile_definitions(StarWarsTrilogy PRIVATE VK_USE_PLATFORM_WIN32_KHR)
+    target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static winmm ole32 oleaut32 windowscodecs mfplat mfuuid gdi32 dwmapi shell32 winhttp
+        ${CMAKE_SOURCE_DIR}/third_party/ngx/lib/nvsdk_ngx_d.lib)
+endif()
 
 if(MSVC)
     # /bigobj: the generated files contain many functions. /W4 on our C++ (the
@@ -193,6 +253,10 @@ if(LW_TESTS)
         if(MSVC)
             target_compile_options(${t} PRIVATE /W4 /utf-8)
             target_compile_definitions(${t} PRIVATE _CRT_SECURE_NO_WARNINGS)
+        endif()
+        if(APPLE)
+            target_compile_options(${t} PRIVATE -include ${MAC_DIR}/compat.h)
+            target_include_directories(${t} PRIVATE ${MAC_DIR})
         endif()
     endforeach()
     add_test(NAME tilegen COMMAND tilegen_test ${CMAKE_SOURCE_DIR}/tests/tilegen_expected.txt)

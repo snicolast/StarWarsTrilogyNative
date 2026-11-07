@@ -66,7 +66,12 @@ struct AtmosphereUniform {
 };
 static_assert(R3DScene::MAX_GLOWS == 8, "atmosphere.glsl's glow[] holds 8 lights (3 vec4 each)");
 
+#ifdef __APPLE__
+// Shadow map, square: without ray tracing all the sun shadows come from it (SWT_SHADOW_SIZE to try others)
+const uint32_t SHADOW_SIZE = getenv("SWT_SHADOW_SIZE") ? uint32_t(atoi(getenv("SWT_SHADOW_SIZE"))) : 4096;
+#else
 constexpr uint32_t SHADOW_SIZE = 2048;   // shadow map, square
+#endif
 constexpr float SHADOW_RANGE = 220.0f;   // how far in front of the camera shadows are drawn (view units)
 
 VkShaderModule make_module(VkDevice dev, const uint32_t* code, size_t bytes) {
@@ -1445,8 +1450,8 @@ void R3DRenderer::record_shadows(const Frame& f) {
         vkCmdBeginRendering(cmd, &sr);
         VkDeviceSize zero = 0;
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertices_.buffer, &zero);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r3d_layout_, 0, 1, &r3d_set_, 0, nullptr);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r3d_layout_, 0, 1, &r3d_set_, 0, nullptr);
         VkViewport sv{0, 0, float(SHADOW_SIZE), float(SHADOW_SIZE), 0, 1};
         vkCmdSetViewport(cmd, 0, 1, &sv);
         VkRect2D ss{{0, 0}, {SHADOW_SIZE, SHADOW_SIZE}};
@@ -1544,7 +1549,6 @@ void R3DRenderer::record_world(const Frame& f) {
     if (vcount) {
         VkDeviceSize zero = 0;
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertices_.buffer, &zero);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r3d_layout_, 0, 1, &r3d_set_, 0, nullptr);
         float sx = float(out_w) / lay.view_w, sy = float(out_h) / SCREEN_H;
         float widen = lay.view_w / SCREEN_W;
         const auto& vps = scene_->viewports;
@@ -1599,10 +1603,10 @@ void R3DRenderer::record_world(const Frame& f) {
                     rag.pDepthAttachment = &dagain;
                     vkCmdBeginRendering(cmd, &rag);
                     vkCmdBindVertexBuffers(cmd, 0, 1, &vertices_.buffer, &zero);
-                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r3d_layout_, 0, 1, &r3d_set_, 0,
-                                            nullptr);
                 }
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pass == 0 ? opaque_ : translucent_);
+                // MoltenVK needs the new pipeline selected before mapping its descriptor resources.
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r3d_layout_, 0, 1, &r3d_set_, 0, nullptr);
                 for (size_t k = i; k < j; k++) {
                     const R3DViewport& v = vps[k];
                     if (step < 2 && (step == 1) != deferred(v)) continue;

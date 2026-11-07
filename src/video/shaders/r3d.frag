@@ -64,9 +64,27 @@ float sun_shadow(vec3 n) {
     vec4 lc = atm.shadow_matrix * vec4(pos, 1.0);
     vec2 uv = lc.xy * 0.5 + 0.5;
     if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))) || lc.z <= 0.0) return 1.0;
-    // 4x4 texels around the point, compared one by one (soft edges)
     float lit = 0.0;
     vec2 t = vec2(atm.shadow.y);
+#ifdef PLATFORM_MAC
+    // 4x4 texels around the point, compared one by one, each weighted by how
+    // close it is (a tent): soft edges that slide smoothly from texel to texel
+    vec2 st = uv / t - 0.5, cell = floor(st), f = st - cell;
+    for (int y = 0; y < 2; y++)
+        for (int x = 0; x < 2; x++) {
+            vec4 d = textureGather(shadow_map, (cell + vec2(x, y) * 2.0) * t, 0);
+            vec4 hit = vec4(greaterThan(d, vec4(lc.z + atm.shadow.w)));
+            // Space: a caster far in front of the surface (a ship before a
+            // planet or the Death Star) is not near enough to shadow it
+            if (atm.soft.w > 0.0) hit *= vec4(lessThan(d, vec4(lc.z + atm.soft.w)));
+            vec2 w0 = vec2(x == 0 ? 1.0 - f.x : 1.0, y == 0 ? 1.0 - f.y : 1.0);
+            vec2 w1 = vec2(x == 0 ? 1.0 : f.x, y == 0 ? 1.0 : f.y);
+            // textureGather's order: (0,1) (1,1) (1,0) (0,0)
+            lit += dot(hit, vec4(w0.x * w1.y, w1.x * w1.y, w1.x * w0.y, w0.x * w0.y));
+        }
+    lit = 1.0 - lit / 9.0;
+#else
+    // 4x4 texels around the point, compared one by one (soft edges)
     for (int y = 0; y < 2; y++)
         for (int x = 0; x < 2; x++) {
             vec4 d = textureGather(shadow_map, uv + (vec2(x, y) - 0.5) * 2.0 * t, 0);
@@ -77,6 +95,7 @@ float sun_shadow(vec3 n) {
             lit += dot(hit, vec4(1.0));
         }
     lit = 1.0 - lit / 16.0;
+#endif
     // Fades out towards the edge of the shadow map
     vec2 edge = min(uv, 1.0 - uv);
     float fade = smoothstep(0.0, 0.08, min(edge.x, edge.y));
@@ -464,7 +483,14 @@ void main() {
         // DLAA: per-frame noise seed in the fractional part (0 = none)
         float seed = fract(vp.quality.x);
         if (samples > 1 && (flags & ALPHA_TEST) != 0u) {
+#ifdef PLATFORM_MAC
+            // Rounded the same way everywhere, a smooth alpha (the game's soft
+            // blobs) shows one ring per sample: dithered, the rings dissolve
+            float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+            int covered = clamp(int(t.a * float(samples) + dither), 0, samples);
+#else
             int covered = clamp(int(t.a * float(samples) + 0.5), 0, samples);
+#endif
             if (covered == 0) discard;
             gl_SampleMask[0] = (1 << covered) - 1;
         } else if (seed > 0.0 && (flags & ALPHA_TEST) != 0u) {

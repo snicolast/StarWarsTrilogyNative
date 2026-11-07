@@ -1,5 +1,6 @@
-// Win32 window + Vulkan 1.3 device + swapchain. Each frame calls a
-// function that records the draw commands onto the swapchain image.
+// Window (Win32; SDL3 on macOS: src/platform/mac/vk_window_mac.cpp) + Vulkan 1.3
+// device + swapchain. Each frame calls a function that records the draw
+// commands onto the swapchain image.
 #pragma once
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -12,8 +13,14 @@
 #include <string>
 #include <vector>
 
+#ifdef __APPLE__
+#ifndef VK_USE_PLATFORM_METAL_EXT
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+#else
 #ifndef VK_USE_PLATFORM_WIN32_KHR
 #define VK_USE_PLATFORM_WIN32_KHR
+#endif
 #endif
 #include "volk.h"
 
@@ -96,11 +103,19 @@ public:
 private:
     bool create_swapchain();
     void destroy_swapchain();
+#ifdef __APPLE__
+    bool create_window(const char* title, int width, int height);
+    bool load_vulkan();
+    bool create_surface();
+    void destroy_window();
+    float wheel_ = 0;   // a trackpad's fractions of a wheel notch
+#else
     static LRESULT CALLBACK wndproc(HWND, UINT, WPARAM, LPARAM);
+    WINDOWPLACEMENT placement_{sizeof(WINDOWPLACEMENT)};
+#endif
 
     HWND hwnd_ = nullptr;
     bool quit_ = false, resized_ = false, fullscreen_ = false, show_cursor_ = false;
-    WINDOWPLACEMENT placement_{sizeof(WINDOWPLACEMENT)};
 
     VkInstance instance_ = VK_NULL_HANDLE;
     VkSurfaceKHR surface_ = VK_NULL_HANDLE;

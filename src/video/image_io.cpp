@@ -1,11 +1,14 @@
 #include "image_io.h"
 
 #include <windows.h>
+#ifndef __APPLE__
 #include <wincodec.h>
+#endif
 
 #include <cstdio>
 #include <utility>
 
+#ifndef __APPLE__   // src/platform/mac/image_io_mac.mm
 namespace {
 
 IWICImagingFactory* wic() {
@@ -74,6 +77,7 @@ bool png_save(const std::string& path, int w, int h, const uint8_t* rgba) {
     if (stream) stream->Release();
     return ok;
 }
+#endif
 
 std::vector<std::string> list_files(const std::string& dir, const char* pattern) {
     std::vector<std::string> out;
