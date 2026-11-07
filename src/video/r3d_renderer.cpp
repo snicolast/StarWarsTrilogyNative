@@ -66,7 +66,12 @@ struct AtmosphereUniform {
 };
 static_assert(R3DScene::MAX_GLOWS == 8, "atmosphere.glsl's glow[] holds 8 lights (3 vec4 each)");
 
+#ifdef __APPLE__
+// Shadow map, square: without ray tracing all the sun shadows come from it (SWT_SHADOW_SIZE to try others)
+const uint32_t SHADOW_SIZE = getenv("SWT_SHADOW_SIZE") ? uint32_t(atoi(getenv("SWT_SHADOW_SIZE"))) : 4096;
+#else
 constexpr uint32_t SHADOW_SIZE = 2048;   // shadow map, square
+#endif
 constexpr float SHADOW_RANGE = 220.0f;   // how far in front of the camera shadows are drawn (view units)
 
 VkShaderModule make_module(VkDevice dev, const uint32_t* code, size_t bytes) {

@@ -47,6 +47,37 @@ data/crom.bin ──analyze.py──▶ out/listing.asm, functions.txt, report.t
 gen/*.cpp + runtime/ (memory, Real3D, SCSP, input) ──CMake/MSVC──▶ StarWarsTrilogy.exe
 ```
 
+## macOS
+
+The generated C++ and the game's hardware are the same on both systems; only the layer under them differs.
+On macOS (`src/platform/mac/`, `build_mac.sh`) a `windows.h` of our own gives the Win32 names the code uses,
+so its Windows paths stay as they are:
+
+| Windows | macOS |
+|---|---|
+| Win32 window, messages, raw input | SDL3 (`vk_window_mac.cpp`), turned into the same messages; one mouse (`raw_mice_mac.cpp`) |
+| Vulkan driver | MoltenVK 1.4, loaded from next to the program; no ray queries, so `RAY_TRACING` shaders stay unused |
+| WASAPI | SDL3 audio at the device's own rate (`audio_out_mac.cpp`) |
+| GDI text | Core Text (`win32_mac.mm`) |
+| WIC | ImageIO (`image_io_mac.mm`) |
+| Media Foundation, MCI, PlaySound | AVFoundation (`splash_video_mac.mm`, `menu_music_mac.mm`, `win32_mac.mm`) |
+| WinHTTP | NSURLSession (`win32_mac.mm`) |
+| NGX (DLAA) | none (`dlss_mac.cpp`) |
+
+The floating point of the game must stay as the Windows build has it: `-ffp-contract=off` keeps `a*b+c` as two
+operations (Arm has a fused one the compiler would otherwise pick), with `-fno-strict-aliasing` and `-fwrapv`
+for what MSVC allows.
+
+The game reads and writes relative to the current folder. `Star Wars Trilogy.app` carries what it reads in
+`Contents/Resources` and starts in `~/Library/Application Support/Star Wars Trilogy Native`, where links lead to it
+(`mac_enter_game_folder`). Reading from a folder like the Desktop instead would hold the program, with no window,
+until macOS has its answer to a privacy prompt, and again after each rebuild, as an ad-hoc signature changes.
+
+Ray tracing and DLAA are missing there, and Apple's GPUs make MSAA cheap, so macOS spends differently: MSAA 8x and
+16x anisotropic filtering by default, a supersampling option, a 4096 shadow map (2048 on Windows) read through a
+tent filter, and alpha-tested coverage dithered per pixel so soft alpha does not show one ring per sample
+(`PLATFORM_MAC` in `r3d.frag`).
+
 ## Status
 
 Playable from start to end: every stage of the arcade game in true widescreen,

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>Sega's 1998 arcade game, running natively on PC.</b><br>
+  <b>Sega's 1998 arcade game, running natively on PC and Mac.</b><br>
   Not an emulator: the original code, recompiled to C++, with a modern Vulkan renderer.
 </p>
 
@@ -88,6 +88,27 @@ and one *Windows 11 SDK* (it works on Windows 10 too).
 Then run `build.bat` with `swtrilgy.zip` next to it (or pass its path: `build.bat D:\roms\swtrilgy.zip`).
 It downloads SDL3 and NVIDIA DLSS on the first run.
 </details>
+
+### macOS
+
+<img src="docs/img/macos.jpg" alt="The Death Star in a macOS window" width="70%">
+
+You need a Mac with Apple silicon, macOS 13 or later and the command line tools (`xcode-select --install`).
+Python 3 comes with those tools; CMake and Ninja are used if you have them, else `build_mac.sh` fetches its
+own copies into `build/`.
+
+1. Put `swtrilgy.zip` in the folder (or in `roms/`, or pass its path: `./build_mac.sh ~/roms/swtrilgy.zip`).
+2. Run `./build_mac.sh`. It downloads SDL3 and MoltenVK (Vulkan on Metal) on the first run and makes
+   `Star Wars Trilogy.app` in the folder.
+3. Play with `Star Wars Trilogy.app`. It holds all it needs, so you can move it anywhere. That includes the data
+   from your ROM, so keep it to yourself. Settings and records are in
+   `~/Library/Application Support/Star Wars Trilogy Native` and survive a rebuild.
+
+Compared with Windows: no ray tracing (MoltenVK has no ray queries; the sun shadows and ambient occlusion use
+a sharper shadow map and the depth instead), no DLAA (MSAA 8x by default, and **Options > Display > Supersampling**
+for smoother still, on a fast Mac), one mouse (a second player uses a gamepad), and UPDATE NOW opens the game's
+page instead of updating by itself. Option+Return, Cmd+Return or F11 toggle fullscreen; on most Mac keyboards the
+function keys need Fn held.
 
 ### Update
 
