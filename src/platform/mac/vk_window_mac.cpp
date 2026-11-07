@@ -21,6 +21,7 @@ namespace {
 
 SDL_Window* g_window = nullptr;
 SDL_MetalView g_metal_view = nullptr;
+bool g_background = false;
 
 const struct { int vk; SDL_Scancode sc; } KEYS[] = {
     {VK_BACK, SDL_SCANCODE_BACKSPACE}, {VK_TAB, SDL_SCANCODE_TAB}, {VK_RETURN, SDL_SCANCODE_RETURN},
@@ -57,6 +58,11 @@ SDL_Scancode mac_scancode(int vk) {
 
 bool VkPresenter::create_window(const char* title, int width, int height) {
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    g_background = getenv("SWT_BACKGROUND") != nullptr;
+    if (g_background) {
+        SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+        SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
+    }
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "0");   // no sliding to another Space and back
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");      // the click that brings the window up counts
@@ -71,15 +77,19 @@ bool VkPresenter::create_window(const char* title, int width, int height) {
         float k = std::min({1.0f, float(usable.w) * 0.9f / float(width), float(usable.h) * 0.9f / float(height)});
         width = int(float(width) * k), height = int(float(height) * k);
     }
-    g_window = SDL_CreateWindow(title, width, height, SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    SDL_WindowFlags flags = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    if (g_background) flags |= SDL_WINDOW_HIDDEN | SDL_WINDOW_NOT_FOCUSABLE;
+    g_window = SDL_CreateWindow(title, width, height, flags);
     if (!g_window) {
         fprintf(stderr, "[window] could not open: %s\n", SDL_GetError());
         return false;
     }
     g_metal_view = SDL_Metal_CreateView(g_window);
     hwnd_ = reinterpret_cast<HWND>(g_window);
-    SDL_RaiseWindow(g_window);
-    SDL_HideCursor();
+    if (!g_background) {
+        SDL_RaiseWindow(g_window);
+        SDL_HideCursor();
+    }
     return g_metal_view != nullptr;
 }
 
@@ -105,6 +115,7 @@ bool VkPresenter::create_surface() {
 }
 
 void VkPresenter::set_cursor_visible(bool visible) {
+    if (g_background) return;
     if (visible == show_cursor_) return;
     show_cursor_ = visible;
     if (visible) SDL_ShowCursor();
@@ -112,6 +123,7 @@ void VkPresenter::set_cursor_visible(bool visible) {
 }
 
 void VkPresenter::toggle_fullscreen() {
+    if (g_background) return;
     fullscreen_ = !fullscreen_;
     SDL_SetWindowFullscreen(g_window, fullscreen_);
     resized_ = true;

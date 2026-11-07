@@ -78,6 +78,12 @@ Ray tracing and DLAA are missing there, and Apple's GPUs make MSAA cheap, so mac
 tent filter, and alpha-tested coverage dithered per pixel so soft alpha does not show one ring per sample
 (`PLATFORM_MAC` in `r3d.frag`).
 
+For rendered checks without taking desktop focus, launch with `SWT_BACKGROUND=1`. The SDL window stays hidden
+and cannot take focus; the cursor and fullscreen state are left alone. Vulkan still renders, so `--replay`
+and `--shot` work. Errors go to stderr instead of opening a dialog. Add `MTL_DEBUG_LAYER=1`
+and `METAL_DEVICE_WRAPPER_TYPE=1` to enable Metal API validation. Use an isolated working folder with the game's
+resources when testing, so settings and records stay separate from normal play.
+
 ## Status
 
 Playable from start to end: every stage of the arcade game in true widescreen,

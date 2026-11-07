@@ -282,6 +282,10 @@ short GetAsyncKeyState(int vk) {
 BOOL SetWindowTextA(HWND hwnd, const char* text) { return SDL_SetWindowTitle(reinterpret_cast<SDL_Window*>(hwnd), text); }
 
 int MessageBoxA(HWND hwnd, const char* text, const char* title, UINT) {
+    if (getenv("SWT_BACKGROUND")) {
+        fprintf(stderr, "[%s] %s\n", title, text);
+        return 1;
+    }
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text, reinterpret_cast<SDL_Window*>(hwnd));
     return 1;
 }
