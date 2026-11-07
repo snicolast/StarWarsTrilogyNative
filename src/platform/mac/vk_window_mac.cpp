@@ -23,6 +23,12 @@ SDL_Window* g_window = nullptr;
 SDL_MetalView g_metal_view = nullptr;
 bool g_background = false;
 
+// SDL only asks macOS to redo the window's cursor rectangle, and the menus could still
+// come up with no pointer: set it directly too, while the mouse is over this window in front
+void set_cursor_now(bool visible) {
+    if (SDL_GetMouseFocus() == g_window && (SDL_GetWindowFlags(g_window) & SDL_WINDOW_INPUT_FOCUS)) mac_set_cursor(visible);
+}
+
 const struct { int vk; SDL_Scancode sc; } KEYS[] = {
     {VK_BACK, SDL_SCANCODE_BACKSPACE}, {VK_TAB, SDL_SCANCODE_TAB}, {VK_RETURN, SDL_SCANCODE_RETURN},
     {VK_ESCAPE, SDL_SCANCODE_ESCAPE}, {VK_SPACE, SDL_SCANCODE_SPACE}, {VK_PRIOR, SDL_SCANCODE_PAGEUP},
@@ -120,6 +126,7 @@ void VkPresenter::set_cursor_visible(bool visible) {
     show_cursor_ = visible;
     if (visible) SDL_ShowCursor();
     else SDL_HideCursor();
+    set_cursor_now(visible);
 }
 
 void VkPresenter::toggle_fullscreen() {
@@ -157,6 +164,7 @@ bool VkPresenter::pump() {
             break;
         }
         case SDL_EVENT_MOUSE_MOTION:
+            if (show_cursor_) set_cursor_now(true);
             hook(WM_MOUSEMOVE, 0, at(e.motion.x, e.motion.y));
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:

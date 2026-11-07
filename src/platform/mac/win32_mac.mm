@@ -2,6 +2,7 @@
 #include "windows.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <AppKit/AppKit.h>
 #import <CoreText/CoreText.h>
 #import <Foundation/Foundation.h>
 #include <SDL3/SDL.h>
@@ -258,6 +259,26 @@ BOOL GetCursorPos(POINT* out) {
     float k = mac_window() ? SDL_GetWindowPixelDensity(mac_window()) : 1.0f;
     *out = {LONG(x * k), LONG(y * k)};
     return TRUE;
+}
+
+void mac_set_cursor(bool visible) {
+    static NSCursor* none = [] {
+        NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nullptr
+                                                                        pixelsWide:1
+                                                                        pixelsHigh:1
+                                                                     bitsPerSample:8
+                                                                   samplesPerPixel:4
+                                                                          hasAlpha:YES
+                                                                          isPlanar:NO
+                                                                    colorSpaceName:NSDeviceRGBColorSpace
+                                                                       bytesPerRow:4
+                                                                      bitsPerPixel:32];
+        memset(rep.bitmapData, 0, 4);
+        NSImage* image = [[NSImage alloc] initWithSize:NSMakeSize(1, 1)];
+        [image addRepresentation:rep];
+        return [[NSCursor alloc] initWithImage:image hotSpot:NSZeroPoint];
+    }();
+    [(visible ? [NSCursor arrowCursor] : none) set];
 }
 
 short GetAsyncKeyState(int vk) {

@@ -10,3 +10,4 @@ SDL_Scancode mac_scancode(int vk);       // SDL_SCANCODE_UNKNOWN: not one of the
 std::string mac_exe_path();              // this program's file, resolved
 void mac_enter_game_folder();            // into the folder the game's relative paths work from
 bool mac_https_get(const wchar_t* host, const wchar_t* path, std::string& body);   // at most 256 KB
+void mac_set_cursor(bool visible);       // the arrow or nothing; from the main thread
