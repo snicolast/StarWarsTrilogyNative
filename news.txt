@@ -13,6 +13,10 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[8] 2026-11-08
+- Mac: the game now builds on Apple silicon Macs too, thanks to Nutcasey (steps in docs/MACOS.md)
+- Windows: a small renderer change shared with the Mac version, nothing else changes
+
 [7] 2026-11-08
 - OPTIONS > CONTROLS > INVERT IN DUELS: turn the aim round in the lightsaber duels only, if they feel the wrong way round (the other stages stay as they are)
 
