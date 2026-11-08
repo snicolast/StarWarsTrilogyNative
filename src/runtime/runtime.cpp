@@ -928,7 +928,7 @@ static void widen_fov() {
     // widened, were dropped by the game now and then (they flickered)
     uint32_t top_state = rd32(0x2210E8);
     static const bool duel_wide = getenv("SWT_DUEL_WIDE_CULL") != nullptr;
-    bool duel = rd8(0x1BC85B) == 9 && top_state >= 10 && top_state <= 13 && !duel_wide;
+    bool duel = swt_playing() && top_state >= 10 && top_state <= 13 && !duel_wide;
     float want = off ? 1.0f : std::clamp(g_wide_view.load(), 1.0f, 4.5f);
     struct Slot { float base = 0, wrote = 0, factor = 1; };
     static Slot slots[32];
@@ -1152,7 +1152,7 @@ static bool arcade_entry_frame() {
     if (g_arcade_entry == 4) {
         p.coin = p.start = false;
         if (!attract && g_frame - from < 12000) {
-            if (mode == 9 && rd32(0x2210FC) == 3) {   // the shield (0x22159A, player struct; 0x1BC974 a copy)
+            if (swt_playing()) {   // the shield (0x22159A, player struct; 0x1BC974 a copy)
                 wr16(0x22159A, 0);
                 wr32(0x1BC974, 0);
             }

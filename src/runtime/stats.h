@@ -61,4 +61,5 @@ void stats_save();                  // at exit (it also saves by itself every 30
 
 // Game thread
 void stats_frame();                 // every vblank
+bool swt_playing();                 // a game being played (mode byte 6-9 and the game's sequence step)
 void stats_enter(Ctx& c, uint32_t fn);   // entry of a hooked function
