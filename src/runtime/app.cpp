@@ -381,14 +381,20 @@ int main(int argc, char** argv) {
     builder.set_procedural_sky(g_opt.sky_procedural);
     TexturePack pack;
     pack.init("textures", g_opt.dump_textures ? "out/textures" : "");
+    pack.set_slot_limit(renderer.replacement_slots());
     builder.set_texture_pack(&pack, &g_texture_ram);
     // 2D replacements: the foreground (GPU slots 1-27) and the layers below the
     // 3D image (28-55; the backdrops of SkyPack use 56-63)
+    // (none of them, procedural sky included, on GPUs that cannot bind the pictures)
+    const bool pictures = renderer.overlay_slots() >= Pack2D::MAX_SLOTS;
     Pack2D pack2d, pack2d_back;
-    pack2d.init("textures/2d", 1, 27);
-    pack2d_back.init("textures/2d_back", 28, SkyPack::FIRST_SLOT - 1);
+    if (pictures) {
+        pack2d.init("textures/2d", 1, 27);
+        pack2d_back.init("textures/2d_back", 28, SkyPack::FIRST_SLOT - 1);
+    }
     SkyPack sky;   // sky and other backdrops below the 3D image
     sky.init("textures/sky", g_opt.dump_textures ? "out/sky" : "");
+    if (!pictures) sky.disable();
     sky.set_procedural(g_opt.sky_procedural);
     // Interpolation of the back layers (the sky): where each row's picture was
     // in the last two 2D frames composed, and the vblanks of the 2D frames

@@ -20,7 +20,13 @@ layout(location = 8) in vec4 clip_now;
 layout(location = 9) in vec4 clip_before;
 
 layout(set = 0, binding = 0) uniform usampler2D texture_ram;   // 2048x2048 R16_UINT
+#ifdef FEW_IMAGES
+// GPUs that take few images per shader (r3d_renderer.cpp): the texture pack gets what fits
+layout(constant_id = 0) const int REPLACE_SLOTS = 4096;
+layout(set = 0, binding = 1) uniform sampler2D replacements[REPLACE_SLOTS];
+#else
 layout(set = 0, binding = 1) uniform sampler2D replacements[4096];   // texture pack, RGBA8 with mips
+#endif
 
 layout(push_constant) uniform Viewport {
     mat4 proj;

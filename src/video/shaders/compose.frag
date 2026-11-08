@@ -11,7 +11,13 @@ layout(location = 0) out vec4 color;
 layout(set = 0, binding = 0) uniform sampler2D scene3d;
 layout(set = 0, binding = 1) uniform sampler2D layer2d_front;
 layout(set = 0, binding = 2) uniform sampler2D layer2d_back;
+#ifdef FEW_IMAGES
+// GPUs that take few images per shader (r3d_renderer.cpp): 1 = no 2D replacement pictures
+layout(constant_id = 1) const int OVERLAY_SLOTS = 64;
+layout(set = 0, binding = 3) uniform sampler2D overlays[OVERLAY_SLOTS];
+#else
 layout(set = 0, binding = 3) uniform sampler2D overlays[64];   // 2D replacement pictures (pack2d.h)
+#endif
 #define ATMOSPHERE_BINDING 4
 #include "atmosphere.glsl"
 layout(set = 0, binding = 5) uniform sampler2D text_atlas;   // high-resolution text (text_hd.h)

@@ -42,6 +42,8 @@ public:
     std::string device_name() const { return device_name_; }
     // The device has ray queries and acceleration structures (ray traced effects)
     bool ray_query() const { return ray_query_; }
+    // Sampled images can sit in update-after-bind descriptor sets
+    bool update_after_bind() const { return update_after_bind_; }
     HWND hwnd() const { return hwnd_; }
     void toggle_fullscreen();
     bool fullscreen() const { return fullscreen_; }
@@ -143,6 +145,7 @@ private:
     LastFrame last_;
     bool present_wait_ = false;
     bool ray_query_ = false;
+    bool update_after_bind_ = false;
     uint64_t present_id_ = 0, swapchain_first_id_ = 1;   // the first id presented to the current swapchain
     std::shared_mutex swapchain_mutex_;   // wait_present() against the swapchain being replaced
     VkBuffer capture_buffer_ = VK_NULL_HANDLE;

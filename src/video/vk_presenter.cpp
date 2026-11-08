@@ -295,6 +295,14 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     f12.descriptorBindingPartiallyBound = VK_TRUE;
     f12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
     f12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    {   // GPUs that take only a few images per shader take more in update-after-bind sets (r3d_renderer.cpp)
+        VkPhysicalDeviceVulkan12Features have{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+        VkPhysicalDeviceFeatures2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+        query.pNext = &have;
+        vkGetPhysicalDeviceFeatures2(gpu_, &query);
+        update_after_bind_ = have.descriptorBindingSampledImageUpdateAfterBind;
+        f12.descriptorBindingSampledImageUpdateAfterBind = have.descriptorBindingSampledImageUpdateAfterBind;
+    }
     if (with_ngx) {   // NGX reads its own buffers through device addresses
         VkPhysicalDeviceVulkan12Features have{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         VkPhysicalDeviceFeatures2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};

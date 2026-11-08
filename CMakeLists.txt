@@ -55,6 +55,18 @@ foreach(name r3d ao)
         COMMENT "Shader ${name}.frag (ray tracing)")
     list(APPEND SHADER_HEADERS ${out})
 endforeach()
+# Again with the image arrays sized at pipeline creation, for GPUs that take
+# few images per shader (r3d_renderer.cpp): r3d_few.frag.h, compose_few.frag.h
+foreach(name r3d compose)
+    set(out ${SHADER_OUT}/${name}_few.frag.h)
+    add_custom_command(OUTPUT ${out}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT}
+        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 ${SHADER_DEFINES} -DFEW_IMAGES --vn spv_${name}_few_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
+        DEPENDS ${SHADER_DIR}/${name}.frag glslang-standalone
+        DEPFILE ${out}.d
+        COMMENT "Shader ${name}.frag (few images)")
+    list(APPEND SHADER_HEADERS ${out})
+endforeach()
 add_custom_target(shaders DEPENDS ${SHADER_HEADERS})
 
 # SDL3, for the gamepads only (no window, sound or rendering of its own; on
