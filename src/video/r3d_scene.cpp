@@ -2,6 +2,7 @@
 
 #include <chrono>
 
+#include "r3d_explosions.h"
 #include "r3d_screen.h"
 
 #include <algorithm>
@@ -128,6 +129,7 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     if (pack_ && texture_ram_ && pack_->active()) apply_texture_pack(out);
     auto t4 = clock::now();
     link_previous(out);
+    if (share_world_) r3d_swt_explosions(out, viewport_instances_);   // adds vertices: after the pairing
     auto t5 = clock::now();
     stage_ms_[0] = ms(t0, t1), stage_ms_[1] = ms(t1, t2), stage_ms_[2] = ms(t2, t3), stage_ms_[3] = ms(t3, t4), stage_ms_[4] = ms(t4, t5);
 }

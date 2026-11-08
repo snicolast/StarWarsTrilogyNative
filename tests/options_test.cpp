@@ -65,6 +65,9 @@ int main() {
         CHECK(sp.speakers == 2 && !sp.cubic_samples);
         CHECK(parse(sp, {"--speakers", "surround"}) && sp.speakers == 1);
         CHECK(parse(sp, {"--rear-boost", "0"}) && sp.rear_boost == 0);
+        Options ex;   // the arcade's explosions unless asked
+        CHECK(!ex.explosions && parse(ex, {"--explosions", "enhanced"}) && ex.explosions);
+        CHECK(parse(ex, {"--explosions", "arcade"}) && !ex.explosions);
         Options p;
         CHECK(parse(p, {"--aa", "none", "--aspect", "1.5", "--sky", "procedural"}));
         CHECK(!p.dlaa && p.msaa == 1 && close_to(p.max_aspect, 1.5f) && p.sky_procedural);

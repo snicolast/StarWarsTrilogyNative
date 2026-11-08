@@ -42,6 +42,7 @@
 #include "../ui/frontend.h"
 #include "../ui/menu_music.h"
 #include "../video/pack2d.h"
+#include "../video/r3d_explosions.h"
 #include "../video/r3d_renderer.h"
 #include "../video/r3d_scene.h"
 #include "../video/r3d_screen.h"
@@ -351,6 +352,7 @@ int main(int argc, char** argv) {
     renderer.set_ray_tracing(g_opt.ray_tracing);
     renderer.set_light_shafts(g_opt.shafts ? 1.0f : 0.0f);
     renderer.set_soft_particles(g_opt.soft);
+    r3d_set_swt_explosions(g_opt.explosions);
     renderer.set_hdr(g_opt.hdr);
     renderer.set_relief(g_opt.relief);
     // Star Wars Trilogy's worlds are far bigger in its units than Lost World's
@@ -929,6 +931,7 @@ int main(int argc, char** argv) {
                     renderer.set_ray_tracing(g_opt.ray_tracing = s.ray_tracing);
                     renderer.set_light_shafts((g_opt.shafts = s.shafts) ? 1.0f : 0.0f);
                     renderer.set_soft_particles(g_opt.soft = s.soft);
+                    r3d_set_swt_explosions(g_opt.explosions = s.explosions);
                     renderer.set_hdr(g_opt.hdr = s.hdr);
                     renderer.set_relief(g_opt.relief = s.relief);
                     renderer.set_sharpen((g_opt.sharpen = s.sharpen) ? 0.5f : 0.0f);

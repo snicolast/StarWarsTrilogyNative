@@ -223,6 +223,7 @@ void FrontendSettings::load(const char* path) {
         else if (k == "ray_tracing") ray_tracing = v == "shadows" ? 1 : v == "off" || v == "0" ? 0 : 2;
         else if (k == "light_shafts") shafts = on;
         else if (k == "soft_particles") soft = on;
+        else if (k == "explosions") explosions = v == "enhanced";
         else if (k == "hdr") hdr = on;
         else if (k == "surface_detail") relief = on;
         else if (k == "sharpen") sharpen = on;
@@ -272,6 +273,7 @@ void FrontendSettings::save(const char* path) const {
             splash, menu_music, pointer_sight ? "sight" : "lever", sight_size, pad_lever ? "lever" : "sight", INVERT[pad_invert]);
     fprintf(f, "duel_invert = %s\n", INVERT[duel_invert]);
     fprintf(f, "aspect = %s\n", ASPECT_WORDS[aspect]);
+    fprintf(f, "explosions = %s\n", explosions ? "enhanced" : "arcade");
 #ifdef __APPLE__
     fprintf(f, "supersample = %d\n", supersample);
 #endif
@@ -405,7 +407,7 @@ const Frontend::OptionTab Frontend::OPTION_TABS[] = {
     {OPT_QUALITY, DISPLAY_TAB}, {OPT_DISPLAY, DISPLAY_TAB}, {OPT_ASPECT, DISPLAY_TAB}, {OPT_MOTION, DISPLAY_TAB}, {OPT_AA, DISPLAY_TAB}, {OPT_SCALE, DISPLAY_TAB},
     {OPT_SAT, DISPLAY_TAB}, {OPT_GAMMA, DISPLAY_TAB}, {OPT_SHARPEN, DISPLAY_TAB}, {OPT_UPDATES, DISPLAY_TAB},
     {OPT_SUN, LIGHTING_TAB}, {OPT_SHADOWS, LIGHTING_TAB}, {OPT_RT, LIGHTING_TAB}, {OPT_HDR, LIGHTING_TAB},
-    {OPT_AO, LIGHTING_TAB}, {OPT_BLOOM, LIGHTING_TAB}, {OPT_HAZE, LIGHTING_TAB},
+    {OPT_AO, LIGHTING_TAB}, {OPT_BLOOM, LIGHTING_TAB}, {OPT_EXPLOSIONS, LIGHTING_TAB}, {OPT_HAZE, LIGHTING_TAB},
     {OPT_VOLUME, AUDIO_TAB}, {OPT_MUSIC, AUDIO_TAB}, {OPT_SPEAKERS, AUDIO_TAB}, {OPT_REAR, AUDIO_TAB}, {OPT_SAMPLES, AUDIO_TAB}, {OPT_MENU_MUSIC, AUDIO_TAB},
     {OPT_SIGHT, CONTROLS_TAB}, {OPT_POINTER, CONTROLS_TAB}, {OPT_PAD_AIM, CONTROLS_TAB}, {OPT_PAD_SPEED, CONTROLS_TAB}, {OPT_PAD_INVERT, CONTROLS_TAB}, {OPT_DUEL_INVERT, CONTROLS_TAB}, {OPT_GYRO, CONTROLS_TAB}, {OPT_GYRO_SPEED, CONTROLS_TAB},
     {OPT_VIBRATION, CONTROLS_TAB}, {OPT_ASSIST, CONTROLS_TAB},
@@ -573,6 +575,9 @@ std::vector<Frontend::Item> Frontend::items() const {
                 {OPT_HAZE, L"DISTANCE HAZE", on_off(settings.haze),
                  L"Far scenery on Hoth and Endor fades into the sky instead of appearing suddenly"},
                 {OPT_BLOOM, L"BLOOM", BLOOM_LEVELS[settings.bloom], L"Soft glow around lasers, explosions, engines and lights"},
+                {OPT_EXPLOSIONS, L"EXPLOSIONS", settings.explosions ? L"ENHANCED" : L"ARCADE",
+                 settings.explosions ? L"New fireballs with sparks, burning debris and smoke trails (Yavin for now)"
+                                     : L"The arcade's own explosions"},
                 {OPT_AO, L"AMBIENT OCCLUSION", on_off(settings.ao),
                  L"Soft shadows in corners, trenches and on the ground around things"},
                 {OPT_SKY, L"SKY", settings.sky ? L"PROCEDURAL" : L"ORIGINAL",
@@ -755,6 +760,7 @@ void Frontend::activate(const Item& it, int dir) {
     case OPT_RT: settings.ray_tracing = (settings.ray_tracing + dir + 3) % 3; push(Action::SettingsChanged); break;
     case OPT_SHAFTS: settings.shafts = !settings.shafts; push(Action::SettingsChanged); break;
     case OPT_SOFT: settings.soft = !settings.soft; push(Action::SettingsChanged); break;
+    case OPT_EXPLOSIONS: settings.explosions = !settings.explosions; push(Action::SettingsChanged); break;
     case OPT_HDR: settings.hdr = !settings.hdr; push(Action::SettingsChanged); break;
     case OPT_RELIEF: settings.relief = !settings.relief; push(Action::SettingsChanged); break;
     case OPT_SHARPEN: settings.sharpen = !settings.sharpen; push(Action::SettingsChanged); break;

@@ -29,6 +29,7 @@ void r3d_set_swt_duel(bool on);   // a lightsaber duel: its top HUD is 3D (r3d_a
 // The game's top state while playing (-1: not playing, or a replay): the
 // Death Star's textures are only looked for in Yavin and the last space stage
 void r3d_set_swt_stage(int top_state);
+int r3d_swt_stage();
 // Indoors, the thin black wire polygons (Hoth's base ceiling) are dropped
 void r3d_hide_wires(R3DScene& out);
 // Hoth's sky dome (textures 06C00200 and 06C00300 around the camera, in the
