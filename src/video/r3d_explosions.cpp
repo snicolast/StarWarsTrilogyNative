@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "../audio/explosion_boom.h"
 #include "r3d_screen.h"
 
 namespace {
@@ -14,7 +15,7 @@ std::atomic<bool> g_enhanced{false};
 
 constexpr float FRAME_S = 1.0f / 57.524f;   // one game frame
 constexpr int FIRST_FRAME = 2, LAST_FRAME = 46;   // the fireball's frames of the flipbook (0, 1: sparkles; 47: another sprite)
-constexpr float QUAD = 1.6f;   // the fireball's quad, in sprite radii (room for the shock wave)
+constexpr float QUAD = 1.4f;   // the fireball's quad, in sprite radii (room for its billows)
 constexpr size_t MAX_TRACKS = 24;
 constexpr size_t MAX_PARTICLES = 240;   // per explosion
 
@@ -61,6 +62,12 @@ struct Frame {
     V3 local(V3 v) const { return {dot(v, x), dot(v, y), dot(v, z)}; }
 };
 
+// Turns v about the unit axis a by `angle` (Rodrigues)
+V3 rotate(V3 v, V3 a, float angle) {
+    float c = std::cos(angle), s = std::sin(angle);
+    return v * c + cross(a, v) * s + a * (dot(a, v) * (1 - c));
+}
+
 enum Kind : uint32_t { FIREBALL = 0, SPARK = 1, SMOKE = 2, DEBRIS = 3 };
 
 struct Particle {
@@ -79,6 +86,25 @@ struct Particle {
     bool has_prev = false;
 };
 
+// A piece of the ship that blew up: its own polygons (textures and all),
+// flung out and tumbling, charred, trailing smoke
+struct Chunk {
+    std::vector<R3DVertex> verts;   // pos and nrm about its centre, in space's orientation
+    V3 p, v;                        // centre relative to the explosion; units per second
+    V3 axis{0, 0, 1};
+    float spin = 0, angle = 0, age = 0, life = 3, puff = 0, size = 1;
+    std::vector<V3> prev_view;      // where its vertices were drawn last frame
+};
+
+// A ship as drawn in a recent frame, to break up if it vanishes into an explosion
+struct Ship {
+    uint32_t key = 0;
+    V3 origin;                      // space's orientation (view position turned)
+    V3 axes[3];                     // its model axes, the same way
+    float radius = 0;
+    std::vector<R3DVertex> verts;   // its opaque triangles, pos and nrm about the origin, space's orientation
+};
+
 struct Track {
     uint32_t id = 0, seed = 0;
     V3 anchor, vel;       // centre in space's orientation, and its motion per game frame
@@ -90,6 +116,9 @@ struct Track {
     bool cloud = false;   // the smoke left when the fireball has burnt out
     uint32_t build_index = 0;   // the viewport it is drawn in (R3DViewport::build_index)
     std::vector<Particle> parts;
+    std::vector<Chunk> chunks;
+    bool broken = false;   // its ship was found and broken into chunks
+    int age = 0;           // game frames since it appeared
 };
 
 struct Found {
@@ -103,6 +132,7 @@ struct Found {
 };
 
 std::vector<Track> g_tracks;
+std::vector<std::vector<Ship>> g_ships;   // the last frames' ships, newest first
 uint64_t g_last_frame = 0;
 uint32_t g_next_id = 1;
 
@@ -150,11 +180,11 @@ void burst(Track& t, Rng& rng) {
         t.parts.push_back(p);
     }
     // Pieces of hull, tumbling, glowing hot at first
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 8; i++) {
         Particle p(DEBRIS);
-        p.v = rng.dir() * (R * rng.r(0.5f, 1.7f));
-        p.life = rng.r(1.5f, 2.6f);
-        p.size = R * rng.r(0.04f, 0.11f);
+        p.v = rng.dir() * (R * rng.r(0.6f, 1.9f));
+        p.life = rng.r(1.2f, 2.2f);
+        p.size = R * rng.r(0.025f, 0.06f);
         p.drag = 0.15f;
         p.axis = rng.dir();
         p.spin = rng.r(4.0f, 14.0f) * (rng.f() < 0.5f ? -1.0f : 1.0f);
@@ -169,12 +199,12 @@ void burst(Track& t, Rng& rng) {
 // The smoke left where the fireball was
 void smoke_cloud(Track& t, Rng& rng) {
     float R = t.radius;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 8; i++) {
         Particle p(SMOKE);
-        p.p = rng.dir() * (R * rng.r(0.0f, 0.3f));
-        p.v = rng.dir() * (R * rng.r(0.05f, 0.18f));
-        p.life = rng.r(1.4f, 2.2f);
-        p.size = R * rng.r(0.35f, 0.5f);
+        p.p = rng.dir() * (R * rng.r(0.1f, 0.5f));
+        p.v = rng.dir() * (R * rng.r(0.05f, 0.2f));
+        p.life = rng.r(1.2f, 2.0f);
+        p.size = R * rng.r(0.2f, 0.35f);
         p.grow = 0.5f;
         p.bright = 1;
         float g = rng.r(0.16f, 0.24f);
@@ -205,6 +235,27 @@ void simulate(Track& t, Rng& rng, float dt) {
             puffs.push_back(s);
         }
     }
+    for (Chunk& c : t.chunks) {
+        c.age += dt;
+        c.v = c.v * std::exp(-0.1f * dt);
+        c.p = c.p + c.v * dt;
+        c.angle += c.spin * dt;
+        if (c.age < c.life * 0.6f && (c.puff -= dt) <= 0) {   // burning: a trail of smoke
+            c.puff += 0.045f;
+            Particle s(SMOKE);
+            s.p = c.p + rng.dir() * (c.size * 0.3f);
+            s.v = c.v * 0.05f;
+            s.life = rng.r(0.7f, 1.2f);
+            s.size = c.size * rng.r(0.35f, 0.55f);
+            s.grow = 1.5f;
+            float g = rng.r(0.16f, 0.24f);
+            s.color = rgba(g, g * 0.96f, g * 0.92f, 0.55f * (1.0f - c.age / (c.life * 0.6f)));
+            s.seed = hash32(uint32_t(c.age * 977.0f) + uint32_t(c.verts.size()) * 31u);
+            puffs.push_back(s);
+        }
+    }
+    t.chunks.erase(std::remove_if(t.chunks.begin(), t.chunks.end(), [](const Chunk& c) { return c.age >= c.life; }),
+                   t.chunks.end());
     for (const Particle& s : puffs)
         if (t.parts.size() < MAX_PARTICLES) t.parts.push_back(s);
     t.parts.erase(std::remove_if(t.parts.begin(), t.parts.end(), [](const Particle& p) { return p.age >= p.life; }),
@@ -288,6 +339,71 @@ void draw(const Track& t, const Frame& f, std::vector<R3DVertex>& out) {
     }
 }
 
+// The ship broken into a few pieces by where its triangles lie in its own
+// frame: each wing in an upper and a lower half, the middle in front and back
+void break_ship(Track& t, const Ship& ship, Rng& rng) {
+    std::vector<std::vector<uint32_t>> parts(6);
+    float ext = 0;
+    for (const R3DVertex& v : ship.verts) ext = std::max(ext, std::fabs(dot(load(v.pos), ship.axes[0])));
+    float side = 0.35f * ext;
+    for (uint32_t i = 0; i + 2 < ship.verts.size(); i += 3) {
+        V3 c = (load(ship.verts[i].pos) + load(ship.verts[i + 1].pos) + load(ship.verts[i + 2].pos)) * (1.0f / 3.0f);
+        float mx = dot(c, ship.axes[0]), my = dot(c, ship.axes[1]), mz = dot(c, ship.axes[2]);
+        int k = mx < -side ? (my < 0 ? 0 : 1) : mx > side ? (my < 0 ? 2 : 3) : (mz < 0 ? 4 : 5);
+        parts[size_t(k)].push_back(i);
+    }
+    for (const auto& tris : parts) {
+        if (tris.empty()) continue;
+        Chunk c;
+        V3 centre;
+        for (uint32_t i : tris)
+            for (int j = 0; j < 3; j++) centre = centre + load(ship.verts[i + j].pos);
+        centre = centre * (1.0f / float(tris.size() * 3));
+        float size = 0;
+        for (uint32_t i : tris)
+            for (int j = 0; j < 3; j++) {
+                R3DVertex v = ship.verts[i + j];
+                V3 p = load(v.pos) - centre;
+                store(v.pos, p);
+                size = std::max(size, length(p));
+                // charred: darker, a little warmer
+                uint32_t col = v.color;
+                float r = float(col & 0xFF) * 0.55f, g = float((col >> 8) & 0xFF) * 0.5f, b = float((col >> 16) & 0xFF) * 0.45f;
+                v.color = (col & 0xFF000000u) | uint32_t(r) | uint32_t(g) << 8 | uint32_t(b) << 16;
+                c.verts.push_back(v);
+            }
+        c.p = centre;
+        V3 out = length(centre) > 1e-4f ? normalize(centre) : rng.dir();
+        c.v = normalize(out + rng.dir() * 0.35f) * (t.radius * rng.r(0.35f, 0.9f));
+        c.axis = rng.dir();
+        c.spin = rng.r(1.5f, 5.0f) * (rng.f() < 0.5f ? -1.0f : 1.0f);
+        c.life = rng.r(2.2f, 3.2f);
+        c.puff = rng.r(0.0f, 0.05f);
+        c.size = std::max(size, t.radius * 0.05f);
+        t.chunks.push_back(std::move(c));
+    }
+}
+
+void draw_chunks(Track& t, const Frame& f, std::vector<R3DVertex>& out) {
+    V3 anchor = f.view(t.anchor);
+    for (Chunk& c : t.chunks) {
+        // Shrinks away at the end of its life (out of sight by then, mostly)
+        float k = 1.0f - std::clamp((c.age - (c.life - 0.4f)) / 0.4f, 0.0f, 1.0f);
+        V3 centre = anchor + f.view(c.p);
+        bool prev = c.prev_view.size() == c.verts.size();
+        c.prev_view.resize(c.verts.size());
+        for (size_t i = 0; i < c.verts.size(); i++) {
+            R3DVertex v = c.verts[i];
+            V3 p = centre + f.view(rotate(load(v.pos), c.axis, c.angle) * k);
+            store(v.pos, p);
+            store(v.prev, prev ? c.prev_view[i] : p);
+            store(v.nrm, f.view(rotate(load(v.nrm), c.axis, c.angle)));
+            c.prev_view[i] = p;
+            out.push_back(v);
+        }
+    }
+}
+
 }  // namespace
 
 void r3d_set_swt_explosions(bool enhanced) { g_enhanced = enhanced; }
@@ -298,6 +414,7 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
     static const bool anywhere = getenv("SWT_EXPLOSIONS_ANYWHERE") != nullptr;
     if (!g_enhanced || !(anywhere || r3d_swt_stage() == 3)) {
         g_tracks.clear();
+        g_ships.clear();
         g_last_frame = 0;
         return;
     }
@@ -348,6 +465,37 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
         }
     }
 
+    // The ships drawn this frame (fighters: small next to their distance),
+    // kept a few frames to break up the one that vanishes into an explosion
+    std::vector<Ship> ships;
+    std::vector<uint32_t> keys_now;
+    for (const R3DViewport& v : out.viewports) {
+        if (!(v.shares_world || (v.world && v.space)) || v.build_index >= instances.size()) continue;
+        for (const R3DInstance& in : instances[v.build_index]) {
+            V3 o = load(in.origin);
+            uint32_t from = v.opaque_first + in.opaque[0], to = v.opaque_first + in.opaque[1];
+            if (to <= from || to - from > 9000 || to > out.vertices.size() || o.z > -1e-3f) continue;
+            int fr;
+            if (explosion_frame(out.vertices[from].tex, fr)) continue;
+            float r = 0;
+            for (uint32_t k = from; k < to; k++) r = std::max(r, length(load(out.vertices[k].pos) - o));
+            if (r > 0.3f * -o.z) continue;   // the Death Star, the capital ships near the eye
+            keys_now.push_back(in.key);
+            Ship sh;
+            sh.key = in.key;
+            sh.origin = f.local(o);
+            for (int a = 0; a < 3; a++) sh.axes[a] = normalize(f.local(load(in.axes + 3 * a)));
+            sh.radius = r;
+            sh.verts.assign(out.vertices.begin() + from, out.vertices.begin() + to);
+            for (R3DVertex& x : sh.verts) {
+                store(x.pos, f.local(load(x.pos) - o));
+                store(x.nrm, f.local(load(x.nrm)));
+            }
+            ships.push_back(std::move(sh));
+        }
+    }
+    std::sort(keys_now.begin(), keys_now.end());
+
     // Each to the explosion it was last frame, or a new one
     for (Track& t : g_tracks) t.matched = false;
     for (Found& e : found) {
@@ -369,7 +517,13 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
             t.radius = e.radius;
             t.frame = e.frame;
             Rng rng{t.seed};
-            if (e.frame <= 16) burst(t, rng);   // seen from the start (not an explosion coming into view)
+            if (e.frame <= 16) {   // seen from the start (not an explosion coming into view)
+                burst(t, rng);
+                // A boom under the game's own sound, as loud as the explosion is big on the screen
+                explosion_boom(std::clamp(e.radius / -e.c.z * 7.0f, 0.3f, 1.0f));
+            } else {
+                t.broken = true;   // its ship is long gone
+            }
             g_tracks.push_back(std::move(t));
             best = int(g_tracks.size()) - 1;
         } else {
@@ -399,12 +553,41 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
             }
         }
     }
+    // A ship drawn in the last frames, gone now, where an explosion began:
+    // it breaks into pieces of itself
+    for (Track& t : g_tracks) {
+        t.age += steps;
+        if (t.broken) continue;
+        if (t.age > 20) {
+            t.broken = true;
+            continue;
+        }
+        V3 at = f.view(t.anchor);
+        const Ship* best = nullptr;
+        float best_d = 1e30f;
+        for (const auto& frame : g_ships)
+            for (const Ship& sh : frame) {
+                if (std::binary_search(keys_now.begin(), keys_now.end(), sh.key)) continue;   // still flying
+                float d = length(f.view(sh.origin) - at);
+                if (d < std::max(2.0f * t.radius, 1.5f * sh.radius) && d < best_d) best = &sh, best_d = d;
+            }
+        if (!best) continue;
+        Rng rng{t.seed ^ 0xC0FFEEu};
+        uint32_t key = best->key;
+        break_ship(t, *best, rng);
+        t.broken = true;
+        for (auto& frame : g_ships)   // one ship, one explosion
+            frame.erase(std::remove_if(frame.begin(), frame.end(), [&](const Ship& sh) { return sh.key == key; }), frame.end());
+    }
+    g_ships.insert(g_ships.begin(), std::move(ships));
+    if (g_ships.size() > 3) g_ships.resize(3);
+
     for (Track& t : g_tracks) {
         Rng rng{hash32(t.seed + uint32_t(out.frame))};
         for (int s = 0; s < steps; s++) simulate(t, rng, FRAME_S);
     }
     g_tracks.erase(std::remove_if(g_tracks.begin(), g_tracks.end(),
-                                  [](const Track& t) { return !t.matched && (t.parts.empty() || t.unseen > 400); }),
+                                  [](const Track& t) { return !t.matched && ((t.parts.empty() && t.chunks.empty()) || t.unseen > 400); }),
                    g_tracks.end());
     // The sprite becomes the fireball: two of its triangles hold a quad
     // facing the eye, the rest of it (and its solid texels' copy in the
@@ -447,40 +630,55 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
                 if (length(load(g.a) - e.c) < e.radius) g.strength *= 1.0f + 2.0f * (1.0f - t / 0.3f);
     }
 
-    // The particles, at the end of the translucent list of their viewport
-    std::vector<std::vector<R3DVertex>> add(out.viewports.size());
+    // The particles at the end of the translucent list of their viewport,
+    // the ship's pieces at the end of its opaque list
+    std::vector<std::vector<R3DVertex>> add_trans(out.viewports.size()), add_opaque(out.viewports.size());
     for (Track& t : g_tracks) {
-        if (t.parts.empty()) continue;
+        if (t.parts.empty() && t.chunks.empty()) continue;
         uint32_t vi = UINT32_MAX;
         for (uint32_t i = 0; i < out.viewports.size(); i++)
             if (out.viewports[i].build_index == t.build_index && (out.viewports[i].world || out.viewports[i].shares_world)) vi = i;
         if (vi == UINT32_MAX) {
             for (Particle& p : t.parts) p.has_prev = false;
+            for (Chunk& c : t.chunks) c.prev_view.clear();
             continue;
         }
-        draw(t, f, add[vi]);
+        draw(t, f, add_trans[vi]);
+        draw_chunks(t, f, add_opaque[vi]);
         V3 anchor = f.view(t.anchor);
         for (Particle& p : t.parts) p.prev_view = anchor + f.view(p.p), p.has_prev = true;
     }
-    // Inserted from the last position back, so the earlier ones stay put
-    std::vector<uint32_t> order;
-    for (uint32_t i = 0; i < add.size(); i++)
-        if (!add[i].empty()) order.push_back(i);
-    std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
-        return out.viewports[a].trans_first + out.viewports[a].trans_count > out.viewports[b].trans_first + out.viewports[b].trans_count;
-    });
-    for (uint32_t vi : order) {
-        R3DViewport& target = out.viewports[vi];
-        uint32_t at = target.trans_first + target.trans_count;
+    // Inserted from the last position back, so the earlier ones stay put (each
+    // position read again as it is reached: two can meet)
+    struct Insert {
+        uint32_t viewport;
+        bool opaque;
+        uint32_t at;
+    };
+    std::vector<Insert> inserts;
+    for (uint32_t i = 0; i < out.viewports.size(); i++) {
+        const R3DViewport& v = out.viewports[i];
+        if (!add_trans[i].empty()) inserts.push_back({i, false, v.trans_first + v.trans_count});
+        if (!add_opaque[i].empty()) inserts.push_back({i, true, v.opaque_first + v.opaque_count});
+    }
+    std::sort(inserts.begin(), inserts.end(), [](const Insert& a, const Insert& b) { return a.at > b.at; });
+    for (const Insert& ins : inserts) {
+        const std::vector<R3DVertex>& add = ins.opaque ? add_opaque[ins.viewport] : add_trans[ins.viewport];
+        R3DViewport& self_vp = out.viewports[ins.viewport];
+        uint32_t at = ins.opaque ? self_vp.opaque_first + self_vp.opaque_count : self_vp.trans_first + self_vp.trans_count;
         if (at > out.vertices.size()) continue;
-        uint32_t n = uint32_t(add[vi].size());
-        out.vertices.insert(out.vertices.begin() + at, add[vi].begin(), add[vi].end());
+        uint32_t n = uint32_t(add.size());
+        out.vertices.insert(out.vertices.begin() + at, add.begin(), add.end());
         for (uint32_t i = 0; i < out.viewports.size(); i++) {
-            if (i == vi) continue;
             R3DViewport& v = out.viewports[i];
-            if (v.opaque_first >= at) v.opaque_first += n;
-            if (v.trans_first >= at) v.trans_first += n;
+            if (i == ins.viewport) {   // its translucent list follows its opaque one
+                if (ins.opaque) v.trans_first += n;
+                continue;
+            }
+            // (an empty list where the vertices go belongs to the viewport before)
+            bool after = v.opaque_first > at || (v.opaque_first == at && (v.opaque_count > 0 || v.trans_count > 0));
+            if (after) v.opaque_first += n, v.trans_first += n;
         }
-        target.trans_count += n;
+        (ins.opaque ? self_vp.opaque_count : self_vp.trans_count) += n;
     }
 }

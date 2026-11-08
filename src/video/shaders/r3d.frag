@@ -286,8 +286,7 @@ vec2 spotlight() {
 
 // EXPLOSIONS: ENHANCED (r3d_explosions.cpp, not in the original): the game's
 // explosion sprite becomes a fireball of billowing noise, white hot at first,
-// then orange, red and soot as it burns out, with a flash and a thin shock
-// wave; each explosion also throws sparks (streaks), burning pieces trailing
+// then orange, red and soot that breaks up into wisps; each explosion also throws sparks (streaks), burning pieces trailing
 // puffs of smoke and tumbling pieces of hull lit by the sun. tex: kind in
 // bits 0-1, a seed in bits 8-23; params.x: age 0..1; params.z: the
 // fireball's radius, a spark's brightness, a puff's size, a piece's heat
@@ -329,31 +328,31 @@ vec4 explosion(out float glow_k) {
         float cool = smoothstep(0.08, 0.8, t);
         float heat = clamp((shape * 1.1 + (n2 - 0.5) * 0.9) * (1.0 - cool) * 1.25 + (1.0 - cool) * 0.1, 0.0, 1.0);
         vec3 fire = expl_fire(heat) * (0.8 + 4.0 * heat * heat * heat);
-        vec3 soot = vec3(0.07, 0.065, 0.06) * (0.6 + 0.9 * n2) + expl_fire(heat) * 0.15;
+        // soot that breaks up into wisps as it thins out (not one round veil)
+        float ns = expl_fbm(sp * vec3(3.0, 3.0, 1.5) + off * 1.3 + vec3(0.0, t * 0.9, t * 0.4));
+        vec3 soot = vec3(0.07, 0.065, 0.06) * (0.4 + 1.4 * ns) + expl_fire(heat) * 0.15;
         float hot = smoothstep(0.12, 0.4, heat);
         c.rgb = mix(soot, fire, hot);
-        c.a = density * mix(0.65 * (1.0 - smoothstep(0.55, 1.0, t)), 1.0, hot);
-        float r2 = dot(q, q);
-        float flash = (1.0 - smoothstep(0.0, 0.12, t)) * exp(-r2 * 5.0);
+        float diss = -0.15 + smoothstep(0.2, 0.95, t);
+        float wisp = smoothstep(diss, diss + 0.18, ns * 1.15 - 0.1 + (1.0 - d) * 0.2);
+        float sa = 0.75 * wisp * (1.0 - smoothstep(0.75, 1.0, t));
+        c.a = density * mix(sa, 1.0, hot);
+        // the first flash: a white-hot core, ragged like the rest
+        float flash = (1.0 - smoothstep(0.0, 0.12, t)) * exp(-dot(q, q) * 5.0) * (0.7 + 0.6 * n);
         c.rgb += vec3(1.0, 0.95, 0.85) * flash * 8.0;
         c.a = max(c.a, clamp(flash * 1.5, 0.0, 1.0));
-        float tr = t / 0.3;
-        if (tr < 1.0) {
-            float rr = 0.25 + 1.3 * sqrt(tr), w = 0.04 + 0.05 * tr, x = (sqrt(r2) - rr) / w;
-            float ring = exp(-x * x) * pow(1.0 - tr, 1.5) * (0.25 + 1.2 * atm_noise(vec3(q * 6.0, seed * 50.0)));
-            c.rgb += vec3(0.75, 0.85, 1.0) * ring * 1.3;
-            c.a = max(c.a, ring * 0.35);
-        }
     } else if (kind == 1u) {   // a spark: a streak, its head (x = 1) brightest
         float across = 1.0 - q.y * q.y;
         float along = smoothstep(0.0, 1.0, q.x);
         c.rgb = color.rgb * params.z * (0.5 + 0.5 * along) * mix(1.0, 0.6, t);
         c.a = across * across * along * (1.0 - smoothstep(0.5, 1.0, t));
-    } else if (kind == 2u) {   // a puff of smoke
+    } else if (kind == 2u) {   // a puff of smoke: ragged, thinning into wisps
         float n = expl_fbm(vec3(q * 1.6, seed * 40.0 + t * 0.8));
-        float a = 1.0 - smoothstep(0.25, 1.0, length(q) + (n - 0.5) * 0.7);
-        c.rgb = color.rgb * mix(0.75, 1.15, n) * clamp(vp.params.x + 0.3 * vp.sun.w, 0.4, 1.2);
-        c.a = a * color.a * smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.4, 1.0, t));
+        float n2 = expl_fbm(vec3(q * 3.5 + 7.0, seed * 13.0 + t * 0.5));
+        float a = 1.0 - smoothstep(0.2, 1.0, length(q) + (n - 0.5) * 0.9);
+        a *= smoothstep(0.6 * t, 0.6 * t + 0.25, n2);
+        c.rgb = color.rgb * mix(0.7, 1.2, n2) * clamp(vp.params.x + 0.3 * vp.sun.w, 0.4, 1.2);
+        c.a = a * color.a * smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.5, 1.0, t));
         glow_k = 0.0;
     } else {   // a piece of hull: lit by the sun, red hot at first
         vec3 n = normalize(normal);

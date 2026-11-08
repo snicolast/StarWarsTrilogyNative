@@ -191,6 +191,7 @@ add_executable(StarWarsTrilogy
     src/audio/scsp.cpp
     src/audio/sound_board.cpp
     src/audio/dsb2.cpp
+    src/audio/explosion_boom.cpp
     ${MUSASHI_DIR}/m68kdasm.c
     ${MUSASHI_GEN}/m68kops.c
     ${GEN_SOURCES}
