@@ -38,6 +38,10 @@ public:
     bool init(VkPresenter& vk, float supersample, int msaa, int aniso, bool dlaa = false);
     int msaa_samples() const { return int(samples_); }
     bool dlaa_active() const { return dlaa_.ready(); }
+    // Image slots this GPU can bind (slot 0 = none): the texture pack's and the
+    // 2D replacement pictures' (1 = none: the 2D and backdrop packs are off)
+    uint32_t replacement_slots() const { return replace_slots_; }
+    uint32_t overlay_slots() const { return overlay_slots_; }
 
     // How much light the scene is given: a multiplier on the sun and on the ambient.
     void set_light_gain(float gain) {
@@ -208,6 +212,10 @@ private:
     float supersample_ = 1.0f;
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     float aniso_ = 0.0f;
+    // Image arrays (init): in update-after-bind sets and/or shrunk to the GPU's
+    // limits; the _few shaders take the sizes as specialisation constants 0 and 1
+    uint32_t replace_slots_ = 4096, overlay_slots_ = 64;
+    bool update_after_bind_ = false, few_images_ = false;
     const R3DScene* scene_ = nullptr;
 
     Image text_cells_;   // per 8x8 cell of the foreground: high-resolution text slot and colours

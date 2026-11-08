@@ -6,6 +6,7 @@
 // out/textures/<hash>.png; a file with the same name in textures/ replaces
 // it, at any resolution and with its own alpha channel.
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -31,12 +32,15 @@ public:
     std::vector<RgbaImage> take_new_images();
 
     size_t replaced_count() const { return slots_.size(); }
+    // Fewer slots than MAX_SLOTS, when the GPU cannot bind them all (R3DRenderer::replacement_slots)
+    void set_slot_limit(uint32_t slots) { slot_limit_ = std::min(slots, MAX_SLOTS); }
 
 private:
     struct Entry {
         uint64_t generation;
         uint32_t slot;
     };
+    uint32_t slot_limit_ = MAX_SLOTS;
     uint32_t resolve(uint32_t tex, R3DTextureRam& ram, uint64_t& generation);
 
     std::string dir_, dump_dir_;

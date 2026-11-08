@@ -39,7 +39,11 @@ public:
     // dir: folder with replacement PNGs; dump_dir: where every new backdrop
     // is written (empty = only on capture())
     void init(const std::string& dir, const std::string& dump_dir);
-    bool active() const { return !available_.empty() || !dump_dir_.empty() || capture_ || procedural_on_; }
+    bool active() const {
+        return !disabled_ && (!available_.empty() || !dump_dir_.empty() || capture_ || procedural_on_);
+    }
+    // For good: the GPU cannot bind the pictures (R3DRenderer::overlay_slots)
+    void disable() { disabled_ = true; }
     // Procedural sky instead of the stages' own (or its replacement file)
     void set_procedural(bool on) { procedural_on_ = on; }
     // Saves the backdrops of the next frame composed to out/sky
@@ -67,7 +71,7 @@ private:
     const Picture* procedural(uint64_t hash, bool upper);
 
     std::string dir_, dump_dir_, capture_dir_;
-    bool capture_ = false, procedural_on_ = false;
+    bool capture_ = false, procedural_on_ = false, disabled_ = false;
     std::unordered_map<uint64_t, Picture> procedural_;   // sky hash -> procedural picture
     std::unordered_map<uint64_t, bool> panorama_;        // picture hash -> wraps around as a sky
     std::unordered_map<uint64_t, uint64_t> hashes_;      // layer contents key -> picture hash
