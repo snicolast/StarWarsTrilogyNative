@@ -36,7 +36,8 @@
 namespace {
 
 // Game RAM
-constexpr uint32_t MODE = 0x1BC85B;           // 0 attract, 1 credit, 4 mission select, 9 playing
+constexpr uint32_t MODE = 0x1BC85B;           // 0 attract, 1 credit, 4 mission select, 6-9 playing (see swt_playing)
+constexpr uint32_t SEQUENCE = 0x2210FC;       // the main loop's step: 2 game init, 3 the game (runtime.cpp)
 constexpr uint32_t TOP_STATE = 0x2210E8;      // stage pairs 2/3 .. 12/13 (init, run)
 constexpr uint32_t PLAYER = 0x221544;         // the player's block
 constexpr uint32_t P_SCORE = PLAYER + 0x10, P_APPEARED = PLAYER + 0x4C, P_DESTROYED = PLAYER + 0x4E;
@@ -232,8 +233,9 @@ struct Tracker {
         frame++;
         int md = rd8(MODE);
         uint32_t st = rd32(TOP_STATE);
-        g_swt_duel = md == 9 && st >= 10 && st <= 13 && !getenv("SWT_DUEL_ORIGINAL");
-        g_swt_top_state = md == 9 ? int(st) : -1;
+        bool playing = swt_playing();
+        g_swt_duel = playing && st >= 10 && st <= 13 && !getenv("SWT_DUEL_ORIGINAL");
+        g_swt_top_state = playing ? int(st) : -1;
         int de = int16_t(rd16(P_DESTROYED)), ap = int16_t(rd16(P_APPEARED)), sh = int16_t(rd16(P_SHIELD));
         int score = int(rd32(P_SCORE));
         std::lock_guard<std::mutex> lock(mutex);
@@ -246,7 +248,7 @@ struct Tracker {
         {   // the stage script's step (0x221136), for the DEBUG menu's phase table
             static int step_was = -1;
             int step = int16_t(rd16(0x221136));
-            if (md == 9 && step != step_was)
+            if (playing && step != step_was)
                 printf("[stage] state %u step %d (shield %d, destroyed %d of %d)\n", st, step, sh, de, ap);
             step_was = step;
         }
@@ -266,7 +268,7 @@ struct Tracker {
                 phase_hurt = false;
             }
         }
-        if (md == 9 && counting()) {
+        if (playing && counting()) {
             stats.play_frames++;
             // The counts only go up during a phase; a fall is the next phase starting from zero
             if (de > destroyed && de - destroyed < 20) stats.kills += de - destroyed;
@@ -337,4 +339,13 @@ void stats_enter(Ctx& c, uint32_t fn) {
 void stats_game_cheated() {
     std::lock_guard<std::mutex> lock(g.mutex);
     g.cheated = true;
+}
+
+// A game being played. The mode byte is 9 in most games, but some run with 6
+// (issue #24: an F9 snapshot of Boba Fett's duel at mode 6, top state 11),
+// and the mode byte left from a game stays 6-9 through the attract's title
+// and rankings, so the main loop's sequence must be at the game (3) too
+bool swt_playing() {
+    int md = rd8(MODE);
+    return md >= 6 && md <= 9 && rd32(SEQUENCE) == 3;
 }
