@@ -52,6 +52,9 @@
 #include "../video/tilegen.h"
 #include "../video/ui_overlay.h"
 #include "../video/vk_presenter.h"
+#ifdef __APPLE__
+#include "../platform/mac/platform_mac.h"
+#endif
 #include "app_internal.h"
 #include "settings_bridge.h"
 
@@ -180,6 +183,12 @@ static void pacing_sample(double now, double display, double shown, const R3DFra
 
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);   // keep logs even if the process dies
+#ifdef __APPLE__
+    mac_enter_game_folder();
+    // Both cost almost nothing on Apple's GPUs (--msaa and --aniso still win)
+    g_opt.msaa = 8;
+    g_opt.aniso = 16;
+#endif
     // The menus (and the settings they save) are left out of test runs, so
     // those always start from the same defaults
     g_opt.menu = !options_disable_menu(argc, argv);

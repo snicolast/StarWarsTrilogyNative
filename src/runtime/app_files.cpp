@@ -220,7 +220,11 @@ bool load_game_rom(std::vector<uint8_t>& sound_program, std::vector<uint8_t>& so
                         "feedback board of the joystick). Without it the game stops at FAILED FEEDBACK LEVER\n"
                         "INITIALIZE.\n\n"
                         "Your swtrilgy.zip is probably an older set that lacks that chip. Get a current,\n"
+#ifdef __APPLE__
+                        "complete swtrilgy.zip (Rev. A), put it next to build_mac.sh and run build_mac.sh again.";
+#else
                         "complete swtrilgy.zip (Rev. A), put it next to build.bat and run build.bat again.";
+#endif
                     fprintf(stderr, "%s\n", msg.c_str());
                     if (!g_opt.headless) MessageBoxA(nullptr, msg.c_str(), "Star Wars Trilogy Native", MB_OK | MB_ICONERROR);
                     return false;
@@ -259,9 +263,15 @@ bool load_game_rom(std::vector<uint8_t>& sound_program, std::vector<uint8_t>& so
         error = "Cannot find the Star Wars Trilogy ROM (swtrilgy.zip). Looked in:\n";
         for (const std::string& l : looked) error += "  " + l + "\n";
     }
+#ifdef __APPLE__
+    error += "\nRun build_mac.sh with your swtrilgy.zip, or give its path with\n"
+             "  ./StarWarsTrilogy --rom ~/roms/swtrilgy.zip\n"
+             "or in the SWT_ROM_ZIP environment variable.";
+#else
     error += "\nPut swtrilgy.zip next to StarWarsTrilogy.exe, or give its path with\n"
              "  StarWarsTrilogy.exe --rom D:\\roms\\swtrilgy.zip\n"
              "or in the SWT_ROM_ZIP environment variable.";
+#endif
     fprintf(stderr, "%s\n", error.c_str());
     if (!g_opt.headless) MessageBoxA(nullptr, error.c_str(), "Star Wars Trilogy Native", MB_OK | MB_ICONERROR);
     return false;

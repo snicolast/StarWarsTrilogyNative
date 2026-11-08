@@ -53,6 +53,7 @@ uint32_t VkPresenter::find_memory(uint32_t type_bits, VkMemoryPropertyFlags flag
     return UINT32_MAX;
 }
 
+#ifndef __APPLE__
 LRESULT CALLBACK VkPresenter::wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     auto* self = reinterpret_cast<VkPresenter*>(GetWindowLongPtrA(hwnd, GWLP_USERDATA));
     if (self && self->input_hook) {
@@ -117,8 +118,12 @@ void VkPresenter::toggle_fullscreen() {
     fullscreen_ = !fullscreen_;
     resized_ = true;
 }
+#endif
 
 bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) {
+#ifdef __APPLE__
+    if (!create_window(title, width, height) || !load_vulkan()) return false;
+#else
     HINSTANCE inst = GetModuleHandleA(nullptr);
     WNDCLASSA wc{};
     wc.lpfnWndProc = wndproc;
@@ -135,11 +140,16 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     SetWindowLongPtrA(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
     if (!check(volkInitialize(), "volkInitialize (is the Vulkan driver missing?)")) return false;
+#endif
 
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "Star Wars Trilogy Native";
     app.apiVersion = VK_API_VERSION_1_3;
+#ifdef __APPLE__
+    std::vector<std::string> inst_names = {VK_KHR_SURFACE_EXTENSION_NAME, VK_EXT_METAL_SURFACE_EXTENSION_NAME};
+#else
     std::vector<std::string> inst_names = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
+#endif
     if (with_ngx) {
         uint32_t count = 0;
         vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
@@ -159,10 +169,14 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     if (!check(vkCreateInstance(&ici, nullptr, &instance_), "vkCreateInstance")) return false;
     volkLoadInstance(instance_);
 
+#ifdef __APPLE__
+    if (!create_surface()) return false;
+#else
     VkWin32SurfaceCreateInfoKHR sci{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
     sci.hinstance = inst;
     sci.hwnd = hwnd_;
     if (!check(vkCreateWin32SurfaceKHR(instance_, &sci, nullptr, &surface_), "vkCreateWin32SurfaceKHR")) return false;
+#endif
 
     // GPU: prefer a discrete one with Vulkan 1.3 and a graphics queue that can present
     uint32_t n = 0;
@@ -203,6 +217,9 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     qci.queueCount = 1;
     qci.pQueuePriorities = &prio;
     std::vector<std::string> dev_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+#ifdef __APPLE__
+    dev_names.push_back("VK_KHR_portability_subset");   // MoltenVK has it, and then it must be asked for
+#endif
     if (with_ngx) {   // only the ones this GPU/driver actually offers
         uint32_t count = 0;
         vkEnumerateDeviceExtensionProperties(gpu_, nullptr, &count, nullptr);
@@ -341,8 +358,11 @@ bool VkPresenter::create_swapchain() {
     std::vector<VkSurfaceFormatKHR> formats(fn);
     vkGetPhysicalDeviceSurfaceFormatsKHR(gpu_, surface_, &fn, formats.data());
     VkSurfaceFormatKHR format = formats[0];
+    // (MoltenVK lists this format in several colour spaces: sRGB is the one that shows the right colours)
     for (auto& f : formats)
-        if (f.format == VK_FORMAT_B8G8R8A8_UNORM) format = f;
+        if (f.format == VK_FORMAT_B8G8R8A8_UNORM &&
+            (format.format != VK_FORMAT_B8G8R8A8_UNORM || f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
+            format = f;
     format_ = format.format;
 
     VkSwapchainCreateInfoKHR ci{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
@@ -395,6 +415,7 @@ void VkPresenter::destroy_swapchain() {
     swapchain_ = VK_NULL_HANDLE;
 }
 
+#ifndef __APPLE__
 bool VkPresenter::pump() {
     MSG msg;
     while (PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -403,6 +424,7 @@ bool VkPresenter::pump() {
     }
     return !quit_;
 }
+#endif
 
 void VkPresenter::run_once(const std::function<void(VkCommandBuffer)>& fn) {
     VkCommandBufferAllocateInfo cai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
@@ -561,5 +583,9 @@ void VkPresenter::shutdown() {
     }
     if (surface_) vkDestroySurfaceKHR(instance_, surface_, nullptr);
     if (instance_) vkDestroyInstance(instance_, nullptr);
+#ifdef __APPLE__
+    destroy_window();
+#else
     if (hwnd_) DestroyWindow(hwnd_);
+#endif
 }

@@ -16,6 +16,11 @@
 
 #include <wincodec.h>
 
+#ifdef __APPLE__
+#include "../platform/mac/platform_mac.h"
+#include "../video/image_io.h"
+#endif
+
 namespace {
 
 // Star Wars: the title's yellow (bright at the top, deeper below) with a dark
@@ -78,6 +83,9 @@ std::wstring widen(const std::string& s) {   // UTF-8
     return w;
 }
 
+#ifdef __APPLE__
+bool https_get(const wchar_t* host, const wchar_t* path, std::string& body) { return mac_https_get(host, path, body); }
+#else
 #ifndef WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
 #define WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY 4   // Windows 8.1 and later
 #endif
@@ -118,6 +126,7 @@ bool https_get(const wchar_t* host, const wchar_t* path, std::string& body) {
     if (!ok) body.clear();
     return ok;
 }
+#endif
 
 const wchar_t* const FACES[4] = {L"Saira ExtraCondensed ExCond", L"Barlow Condensed", L"Share Tech Mono",
                                  L"Jurassic Park"};
@@ -151,13 +160,22 @@ void FrontendSettings::set_quality(int q) {
     ao = l.ao;
     shadows = l.shadows;
     bloom = l.bloom;
+#ifdef __APPLE__
+    if (!l.msaa) aa = 2;
+    else if (aa == 2) aa = 1;   // MSAA 4x or 8x, picked by hand, is left alone
+#else
     if (aa != 1) aa = l.msaa ? 0 : 2;
+#endif
 }
 
 int FrontendSettings::quality() const {
     for (int q = LOW; q <= ULTRA; q++) {
         const QualityLevel& l = QUALITY_LEVELS[q];
+#ifdef __APPLE__
+        bool aa_same = (aa != 2) == l.msaa;
+#else
         bool aa_same = aa == 1 || aa == (l.msaa ? 0 : 2);
+#endif
         if (ray_tracing == l.ray_tracing && ao == l.ao && shadows == l.shadows && bloom == l.bloom && aa_same) return q;
     }
     return CUSTOM;
@@ -194,7 +212,8 @@ void FrontendSettings::load(const char* path) {
         else if (k == "speakers") speakers = v == "surround" ? 1 : v == "headphones" ? 2 : 0;
         else if (k == "rear_boost") rear_boost = std::clamp(atoi(value) / 3 * 3, 0, 12);
         else if (k == "sample_interpolation") cubic_samples = v != "linear";
-        else if (k == "aa") aa = v == "dlaa" ? 1 : (v == "none" || v == "off") ? 2 : 0;
+        else if (k == "aa") aa = v == "dlaa" || v == "msaa8" ? 1 : (v == "none" || v == "off") ? 2 : 0;
+        else if (k == "supersample") supersample = atoi(value) >= 200 ? 200 : atoi(value) >= 150 ? 150 : 100;
         else if (k == "haze") haze = on;
         else if (k == "bloom") bloom = v == "low" ? 1 : v == "medium" ? 2 : v == "high" ? 3 : on ? 2 : 0;
         else if (k == "ao") ao = on;
@@ -234,7 +253,11 @@ void FrontendSettings::load(const char* path) {
 void FrontendSettings::save(const char* path) const {
     FILE* f = fopen(path, "w");
     if (!f) return;
+#ifdef __APPLE__
+    static const char* const AA[3] = {"msaa", "msaa8", "none"};
+#else
     static const char* const AA[3] = {"msaa", "dlaa", "none"};
+#endif
     static const char* const BLOOM[4] = {"off", "low", "medium", "high"};   // also the vibration and aim assist levels
     static const char* const SPEAKERS[3] = {"stereo", "surround", "headphones"};
     static const char* const RT_MODES[3] = {"off", "shadows", "ao"};
@@ -249,6 +272,9 @@ void FrontendSettings::save(const char* path) const {
             splash, menu_music, pointer_sight ? "sight" : "lever", sight_size, pad_lever ? "lever" : "sight", INVERT[pad_invert]);
     fprintf(f, "duel_invert = %s\n", INVERT[duel_invert]);
     fprintf(f, "aspect = %s\n", ASPECT_WORDS[aspect]);
+#ifdef __APPLE__
+    fprintf(f, "supersample = %d\n", supersample);
+#endif
     fprintf(f, "check_updates = %d\nnews_seen = %d\n", check_updates, news_seen);
     if (!lost_world_path.empty()) fprintf(f, "lost_world_path = %s\n", lost_world_path.c_str());
     fclose(f);
@@ -310,6 +336,18 @@ bool Frontend::load_poster(const std::wstring& path) { return load_image(path, p
 
 // Any picture format Windows can read (WIC), as BGRA with straight alpha
 bool Frontend::load_image(const std::wstring& path, std::vector<uint32_t>& px, int& w_out, int& h_out) {
+#ifdef __APPLE__
+    std::vector<uint8_t> rgba;
+    if (!png_load(std::string(path.begin(), path.end()), w_out, h_out, rgba)) {   // the project's paths are ASCII
+        px.clear();
+        w_out = h_out = 0;
+        return false;
+    }
+    px.resize(rgba.size() / 4);
+    for (size_t i = 0; i < px.size(); i++)
+        px[i] = uint32_t(rgba[i * 4 + 2]) | uint32_t(rgba[i * 4 + 1]) << 8 | uint32_t(rgba[i * 4]) << 16 | uint32_t(rgba[i * 4 + 3]) << 24;
+    return true;
+#else
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IWICImagingFactory* wic = nullptr;
     IWICBitmapDecoder* dec = nullptr;
@@ -338,6 +376,7 @@ bool Frontend::load_image(const std::wstring& path, std::vector<uint32_t>& px, i
     w_out = int(w);
     h_out = int(h);
     return true;
+#endif
 }
 
 void Frontend::shutdown() {
@@ -363,7 +402,7 @@ const wchar_t* const Frontend::TAB_NAMES[Frontend::TAB_COUNT] = {L"DISPLAY", L"G
 // soft particles, surface detail).
 // Tabs past VISIBLE_OPTIONS rows scroll.
 const Frontend::OptionTab Frontend::OPTION_TABS[] = {
-    {OPT_QUALITY, DISPLAY_TAB}, {OPT_DISPLAY, DISPLAY_TAB}, {OPT_ASPECT, DISPLAY_TAB}, {OPT_MOTION, DISPLAY_TAB}, {OPT_AA, DISPLAY_TAB},
+    {OPT_QUALITY, DISPLAY_TAB}, {OPT_DISPLAY, DISPLAY_TAB}, {OPT_ASPECT, DISPLAY_TAB}, {OPT_MOTION, DISPLAY_TAB}, {OPT_AA, DISPLAY_TAB}, {OPT_SCALE, DISPLAY_TAB},
     {OPT_SAT, DISPLAY_TAB}, {OPT_GAMMA, DISPLAY_TAB}, {OPT_SHARPEN, DISPLAY_TAB}, {OPT_UPDATES, DISPLAY_TAB},
     {OPT_SUN, LIGHTING_TAB}, {OPT_SHADOWS, LIGHTING_TAB}, {OPT_RT, LIGHTING_TAB}, {OPT_HDR, LIGHTING_TAB},
     {OPT_AO, LIGHTING_TAB}, {OPT_BLOOM, LIGHTING_TAB}, {OPT_HAZE, LIGHTING_TAB},
@@ -410,7 +449,11 @@ constexpr int DEBUG_STAGE_COUNT = int(sizeof(DEBUG_STAGES) / sizeof(DEBUG_STAGES
 
 std::vector<Frontend::Item> Frontend::items() const {
     auto on_off = [](bool v) { return std::wstring(v ? L"ON" : L"OFF"); };
+#ifdef __APPLE__
+    static const wchar_t* const AA[3] = {L"MSAA 4X", L"MSAA 8X", L"OFF"};   // no DLAA without NVIDIA: 1 is MSAA 8x here
+#else
     static const wchar_t* const AA[3] = {L"MSAA 4X", L"DLAA", L"OFF"};
+#endif
     static const wchar_t* const BLOOM_LEVELS[4] = {L"OFF", L"LOW", L"MEDIUM", L"HIGH"};
     static const wchar_t* const INVERT_TEXT[4] = {L"OFF", L"HORIZONTAL", L"VERTICAL", L"BOTH"};
     static const wchar_t* const SPEAKERS[3] = {L"STEREO", L"SURROUND 4.0", L"HEADPHONES"};
@@ -470,7 +513,12 @@ std::vector<Frontend::Item> Frontend::items() const {
     case Screen::Options: {
         std::wstring aa_hint = settings.aa != aa_at_launch
                                    ? L"Edge smoothing.  Takes effect the next time the game starts"
-                                   : L"Edge smoothing (MSAA, NVIDIA DLAA or off).  Applies on the next start";
+                                   :
+#ifdef __APPLE__
+                                     L"Edge smoothing (MSAA 4x, 8x or off).  Applies on the next start";
+#else
+                                     L"Edge smoothing (MSAA, NVIDIA DLAA or off).  Applies on the next start";
+#endif
         wchar_t gamma_text[16];
         swprintf(gamma_text, 16, L"%.2f", settings.gamma / 100.0);
         static const wchar_t* const RT_MODES[3] = {L"OFF", L"SHADOWS", L"SHADOWS + AO"};
@@ -482,12 +530,21 @@ std::vector<Frontend::Item> Frontend::items() const {
             L"Widest 3D view 32:9: fills super ultrawide monitors (3840x1080, 5120x1440)",
             L"Widest 3D view 48:9: fills three monitors side by side (5760x1080, 7680x1440)"};
         static const wchar_t* const QUALITY_NAMES[5] = {L"LOW", L"MEDIUM", L"HIGH", L"ULTRA", L"CUSTOM"};
+#ifdef __APPLE__
+        static const wchar_t* const QUALITY_HINTS[5] = {
+            L"The lightest: no shadows, ambient occlusion or MSAA, low bloom",
+            L"Shadows, ambient occlusion and MSAA, low bloom",
+            L"Every effect, with shadows from the shadow map (no ray tracing on a Mac)",
+            L"Every effect, with shadows from the shadow map (no ray tracing on a Mac)",
+            L"Your own mix of the options.  Pick a level to set the costly ones at once"};
+#else
         static const wchar_t* const QUALITY_HINTS[5] = {
             L"Laptops and integrated graphics: no shadows, ambient occlusion or MSAA, low bloom",
             L"Mid-range cards (RTX 3060, RX 6600): no ray tracing, MSAA 4x, low bloom",
             L"Fast cards: ray traced sun shadows and every effect",
             L"Everything on: ray traced sun shadows and ambient occlusion",
             L"Your own mix of the options.  Pick a level to set the costly ones at once"};
+#endif
         static const wchar_t* const RT_HINTS[3] = {
             L"Shadows from a shadow map and occlusion from the depth, as without ray tracing",
             L"Sun shadows traced through the world: every ship, walker and tree, soft with distance",
@@ -509,6 +566,10 @@ std::vector<Frontend::Item> Frontend::items() const {
                  L"Smooth interpolation of the instrument and voice samples, or the original chip's"},
                 {OPT_QUALITY, L"QUALITY", QUALITY_NAMES[settings.quality()], QUALITY_HINTS[settings.quality()]},
                 {OPT_AA, L"ANTI-ALIASING", AA[settings.aa], aa_hint},
+#ifdef __APPLE__
+                {OPT_SCALE, L"SUPERSAMPLING", settings.supersample == 100 ? L"OFF" : settings.supersample == 150 ? L"1.5X" : L"2X",
+                 L"The 3D drawn larger and scaled down: smoother edges and textures.  Applies on the next start"},
+#endif
                 {OPT_HAZE, L"DISTANCE HAZE", on_off(settings.haze),
                  L"Far scenery on Hoth and Endor fades into the sky instead of appearing suddenly"},
                 {OPT_BLOOM, L"BLOOM", BLOOM_LEVELS[settings.bloom], L"Soft glow around lasers, explosions, engines and lights"},
@@ -680,6 +741,11 @@ void Frontend::activate(const Item& it, int dir) {
     case OPT_REAR: settings.rear_boost = (settings.rear_boost + 3 * dir + 15) % 15; push(Action::SettingsChanged); break;
     case OPT_SAMPLES: settings.cubic_samples = !settings.cubic_samples; push(Action::SettingsChanged); break;
     case OPT_AA: settings.aa = (settings.aa + dir + 3) % 3; push(Action::SettingsChanged); break;
+    case OPT_SCALE: settings.supersample = settings.supersample == 100 ? (dir > 0 ? 150 : 200)
+                                         : settings.supersample == 150 ? (dir > 0 ? 200 : 100)
+                                                                       : (dir > 0 ? 100 : 150);
+        push(Action::SettingsChanged);
+        break;
     case OPT_HAZE: settings.haze = !settings.haze; push(Action::SettingsChanged); break;
     case OPT_BLOOM: settings.bloom = (settings.bloom + dir + 4) % 4; push(Action::SettingsChanged); break;
     case OPT_AO: settings.ao = !settings.ao; push(Action::SettingsChanged); break;
@@ -1045,8 +1111,13 @@ void Frontend::draw_news() {
         text(display(), U(40), LABELS[b], x0 + bw / 2, by + bh / 2 - U(32), 1, st);
     }
     const wchar_t* about = news_button_ == 0
+#ifdef __APPLE__
+                               ? L"Opens the game's page: download the new version there and run build_mac.sh"
+                               : L"Back to the menu.  This news will not show again";
+#else
                                ? L"Closes the game, downloads the new version, builds it again (update.bat) and starts it"
                                : L"Back to the menu.  This news will not show again; update.bat updates any time";
+#endif
     text(ITEM, U(22), about, cx, by + bh + U(26), 1, {HINT, HINT});
 }
 

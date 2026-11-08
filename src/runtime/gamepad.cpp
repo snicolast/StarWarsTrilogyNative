@@ -170,7 +170,11 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
     last_poll_ = t;
     now_ = double(t) * 1e-9;
     SDL_Event e;
+#ifdef __APPLE__   // the window's events share the queue: they stay for VkPresenter::pump, which also pumps it
+    while (SDL_PeepEvents(&e, 1, SDL_GETEVENT, SDL_EVENT_JOYSTICK_AXIS_MOTION, SDL_EVENT_LAST - 1) > 0) {
+#else
     while (SDL_PollEvent(&e)) {
+#endif
         switch (e.type) {
         case SDL_EVENT_GAMEPAD_ADDED: open(e.gdevice.which); break;
         case SDL_EVENT_GAMEPAD_REMOVED: close(e.gdevice.which); break;

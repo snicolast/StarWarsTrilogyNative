@@ -22,10 +22,15 @@ void options_from_settings(Options& o, const FrontendSettings& ini) {
     o.speakers = ini.speakers;
     o.cubic_samples = ini.cubic_samples;
     o.rear_boost = ini.rear_boost;
+#ifdef __APPLE__
+    o.msaa = ini.aa == 1 ? 8 : ini.aa == 2 ? 1 : 4;
+    o.supersample = float(ini.supersample) / 100.0f;
+#else
     o.dlaa = ini.aa == 1;
+    if (ini.aa == 2) o.msaa = 1;
+#endif
     int aspect = std::clamp(ini.aspect, 0, 4);
     if (aspect != aspect_level(o.max_aspect)) o.max_aspect = MAX_ASPECT[aspect];   // --aspect 2.6 stays as 21:9
-    if (ini.aa == 2) o.msaa = 1;
     o.haze = ini.haze ? 1.0f : 0.0f;
     o.bloom = BLOOM_STRENGTH[ini.bloom];
     o.ao = ini.ao ? 1.0f : 0.0f;
@@ -52,7 +57,12 @@ void settings_from_options(FrontendSettings& s, const Options& o) {
     s.speakers = std::clamp(o.speakers, 0, 2);
     s.cubic_samples = o.cubic_samples;
     s.rear_boost = std::clamp(o.rear_boost / 3 * 3, 0, 12);
+#ifdef __APPLE__
+    s.aa = o.msaa >= 8 ? 1 : o.msaa <= 1 ? 2 : 0;
+    s.supersample = o.supersample >= 2.0f ? 200 : o.supersample >= 1.5f ? 150 : 100;
+#else
     s.aa = o.dlaa ? 1 : o.msaa <= 1 ? 2 : 0;
+#endif
     s.aspect = aspect_level(o.max_aspect);   // --aspect 2.6 shows as 21:9 and is kept until changed
     s.haze = o.haze > 0;
     s.bloom = o.bloom <= 0 ? 0 : o.bloom < 0.8f ? 1 : o.bloom < 1.3f ? 2 : 3;
