@@ -122,6 +122,11 @@ can switch the mouse to move the flight lever instead, as on the cabinet. Light 
 sees as a mouse (Sinden, Gun4IR and the like) work in the default mode; for a Sinden, keep its
 software running for the white border.
 
+Flight sticks (Thrustmaster T.Flight HOTAS, Logitech Extreme 3D and other joysticks) work as the
+cabinet's yoke: the stick is the lever, so the sight goes where you hold it and back to the centre
+when you let go. Buttons by number: 1 fire, 2 second trigger, 3 EVENT, 4 coin, 5 start / pause; the
+hat moves in the menus. Plug the stick in its PC mode.
+
 If the lightsaber duels feel the wrong way round to you, **Options > Controls > Invert in duels**
 turns the aim round (horizontal, vertical or both) in the duels only; the other stages stay as they are.
 

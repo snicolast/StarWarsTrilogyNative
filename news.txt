@@ -13,6 +13,9 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[9] 2026-11-09
+- Flight sticks (Thrustmaster T.Flight HOTAS and the like) now work: the stick is the cabinet's lever, button 1 fires, 2 is the second trigger, 3 EVENT, 4 coin, 5 start
+
 [8] 2026-11-08
 - Mac: the game now builds on Apple silicon Macs too, thanks to Nutcasey (steps in docs/MACOS.md)
 - Windows: a small renderer change shared with the Mac version, nothing else changes

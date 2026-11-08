@@ -13,6 +13,12 @@
 //   BACK    pause (Share, View, -)           L3 / R3 sight to the centre
 //   menus   d-pad or left stick, A to accept and B to go back (on Nintendo
 //           pads the A and B they print), L1 / R1 change the settings tab
+//
+// Flight sticks (Thrustmaster T.Flight HOTAS, Logitech Extreme 3D and the
+// other joysticks SDL does not know as a gamepad) are opened as plain
+// joysticks: their stick is the lever itself (absolute, as on the cabinet's
+// yoke), first button fire, second the other trigger, third EVENT, fourth
+// coin (BACK), fifth START; the hat and the stick move in the menus
 #pragma once
 #include <cstdint>
 #include <string>
@@ -20,6 +26,7 @@
 #include <vector>
 
 struct SDL_Gamepad;
+struct SDL_Joystick;
 
 struct GamepadSettings {
     int stick_speed = 5;   // 1..10: sight speed with the sticks
@@ -76,6 +83,7 @@ public:
 private:
     struct Slot {
         SDL_Gamepad* pad = nullptr;
+        SDL_Joystick* joy = nullptr;   // a flight stick or other joystick that is no gamepad (pad null)
         uint32_t id = 0;
         bool nintendo = false;   // A on the right: accept and back swap
         bool buttons[32] = {}, left_trigger = false, right_trigger = false;
@@ -95,9 +103,14 @@ private:
         // Menu direction held, for the key repeat
         int dir = -1;
         double next_repeat = 0;
+        float stick_x = 0.5f, stick_y = 0.5f;   // a joystick's lever at the last poll
     };
     void open(uint32_t id);
+    void open_joystick(uint32_t id);
     void close(uint32_t id);
+    int free_slot() const;
+    void poll_joystick(Slot& s, PadState& st, const GamepadSettings& set, bool focused, bool menu);
+    void menu_keys(Slot& s, bool accept, bool back, bool start, int dir);
     int slot_of(uint32_t id) const;
     void gyro_sample(Slot& s, const float* w, uint64_t time_ns);
     void accel_sample(Slot& s, const float* a);
