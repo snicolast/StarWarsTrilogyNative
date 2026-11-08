@@ -16,6 +16,20 @@ constexpr float SCREEN_ASPECT = 496.0f / 384.0f;   // the sight moves as many pi
 constexpr float STICK_DEAD = 0.15f, STICK_FULL = 0.92f;
 constexpr float TRIGGER_DOWN = 0.35f;
 constexpr float RUMBLE_STRENGTH[4] = {0.0f, 0.45f, 0.75f, 1.0f};
+constexpr float FLIGHT_DEAD = 0.04f, FLIGHT_FULL = 0.95f;   // a flight stick's springs centre it well; full a bit before the stop
+
+// Flight sticks SDL knows (T.16000M, Warthog...) may also have a gamepad
+// mapping: those are flight sticks first
+bool flight_stick(uint32_t id) { return SDL_GetJoystickTypeForID(id) == SDL_JOYSTICK_TYPE_FLIGHT_STICK; }
+
+// One axis of a flight stick, -1..1 with a small dead zone, straight (no curve:
+// the stick's position is the lever's)
+float flight_axis(SDL_Joystick* j, int axis) {
+    float v = float(SDL_GetJoystickAxis(j, axis)) / 32767.0f;
+    float m = std::fabs(v);
+    if (m < FLIGHT_DEAD) return 0.0f;
+    return std::copysign(std::min((m - FLIGHT_DEAD) / (FLIGHT_FULL - FLIGHT_DEAD), 1.0f), v);
+}
 
 // 1..10 around 5 = 1: each step about 19% faster (stick) or 32% (gyroscope)
 float speed_step(int v, float per_doubling) { return std::exp2(float(v - 5) / per_doubling); }
@@ -54,15 +68,23 @@ bool Gamepads::init() {
 
 void Gamepads::shutdown() {
     if (!ok_) return;
-    for (Slot& s : slot_)
+    for (Slot& s : slot_) {
         if (s.pad) SDL_CloseGamepad(s.pad);
+        if (s.joy) SDL_CloseJoystick(s.joy);
+    }
     SDL_Quit();
     ok_ = false;
 }
 
 int Gamepads::slot_of(uint32_t id) const {
     for (int i = 0; i < MAX; i++)
-        if (slot_[i].pad && slot_[i].id == id) return i;
+        if ((slot_[i].pad || slot_[i].joy) && slot_[i].id == id) return i;
+    return -1;
+}
+
+int Gamepads::free_slot() const {
+    for (int i = 0; i < MAX; i++)
+        if (!slot_[i].pad && !slot_[i].joy) return i;
     return -1;
 }
 
@@ -73,10 +95,9 @@ int Gamepads::connected() const {
 }
 
 void Gamepads::open(uint32_t id) {
-    if (slot_of(id) >= 0) return;
-    int i = 0;
-    while (i < MAX && slot_[i].pad) i++;
-    if (i == MAX) return;
+    if (slot_of(id) >= 0 || flight_stick(id)) return;   // flight sticks: open_joystick
+    int i = free_slot();
+    if (i < 0) return;
     SDL_Gamepad* p = SDL_OpenGamepad(id);
     if (!p) return;
     Slot& s = slot_[i];
@@ -97,10 +118,45 @@ void Gamepads::open(uint32_t id) {
     printf("[gamepad] %d: %s%s\n", i + 1, st.name.c_str(), st.has_gyro ? " (with gyroscope)" : "");
 }
 
+// A joystick SDL has no gamepad mapping for (or a flight stick): it needs a
+// stick (two axes) and a button. Wheels, throttles on their own, guitars,
+// drums and dance mats are left alone
+void Gamepads::open_joystick(uint32_t id) {
+    if (slot_of(id) >= 0 || (SDL_IsGamepad(id) && !flight_stick(id))) return;
+    switch (SDL_GetJoystickTypeForID(id)) {
+    case SDL_JOYSTICK_TYPE_WHEEL: case SDL_JOYSTICK_TYPE_THROTTLE: case SDL_JOYSTICK_TYPE_GUITAR:
+    case SDL_JOYSTICK_TYPE_DRUM_KIT: case SDL_JOYSTICK_TYPE_DANCE_PAD: return;
+    default: break;
+    }
+    int i = free_slot();
+    if (i < 0) return;
+    SDL_Joystick* j = SDL_OpenJoystick(id);
+    if (!j) return;
+    if (SDL_GetNumJoystickAxes(j) < 2 || SDL_GetNumJoystickButtons(j) < 1) {
+        SDL_CloseJoystick(j);
+        return;
+    }
+    Slot& s = slot_[i];
+    s = Slot{};
+    s.joy = j;
+    s.id = id;
+    PadState& st = state_[i];
+    float x = st.aim_x, y = st.aim_y;
+    st = PadState{};
+    st.aim_x = x, st.aim_y = y;
+    st.connected = true;
+    const char* name = SDL_GetJoystickName(j);
+    st.name = name ? name : "Joystick";
+    changed_ = true;
+    printf("[gamepad] %d: %s (joystick: %d axes, %d buttons, %d hats)\n", i + 1, st.name.c_str(),
+           SDL_GetNumJoystickAxes(j), SDL_GetNumJoystickButtons(j), SDL_GetNumJoystickHats(j));
+}
+
 void Gamepads::close(uint32_t id) {
     int i = slot_of(id);
     if (i < 0) return;
-    SDL_CloseGamepad(slot_[i].pad);
+    if (slot_[i].pad) SDL_CloseGamepad(slot_[i].pad);
+    if (slot_[i].joy) SDL_CloseJoystick(slot_[i].joy);
     slot_[i] = Slot{};
     state_[i].connected = false;
     state_[i].fire = state_[i].reload = state_[i].event = false;
@@ -178,6 +234,8 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
         switch (e.type) {
         case SDL_EVENT_GAMEPAD_ADDED: open(e.gdevice.which); break;
         case SDL_EVENT_GAMEPAD_REMOVED: close(e.gdevice.which); break;
+        case SDL_EVENT_JOYSTICK_ADDED: open_joystick(e.jdevice.which); break;
+        case SDL_EVENT_JOYSTICK_REMOVED: close(e.jdevice.which); break;
         case SDL_EVENT_GAMEPAD_SENSOR_UPDATE: {
             int i = slot_of(e.gsensor.which);
             if (i < 0) break;
@@ -192,6 +250,7 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
         Slot& s = slot_[i];
         PadState& st = state_[i];
         st.aimed = st.start = st.back = false;
+        if (s.joy) poll_joystick(s, st, set, focused, menu);
         if (!s.pad) continue;
         SDL_Gamepad* p = s.pad;
         float gdx = s.gyro_dx, gdy = s.gyro_dy;
@@ -222,9 +281,6 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
             s.full_tilt = 0;
             SDL_GamepadButton accept = s.nintendo ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH;
             SDL_GamepadButton back = s.nintendo ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST;
-            if (pressed(accept)) keys_.push_back(PadKey::Accept);
-            if (pressed(back) || pressed(SDL_GAMEPAD_BUTTON_BACK)) keys_.push_back(PadKey::Back);
-            if (pressed(SDL_GAMEPAD_BUTTON_START)) keys_.push_back(PadKey::Start);
             if (pressed(SDL_GAMEPAD_BUTTON_NORTH)) keys_.push_back(PadKey::Page);
             if (pressed(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) || lt_pressed) keys_.push_back(PadKey::TabPrev);
             if (pressed(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) || rt_pressed) keys_.push_back(PadKey::TabNext);
@@ -233,14 +289,7 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
                     : down(SDL_GAMEPAD_BUTTON_DPAD_LEFT) ? 2 : down(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) ? 3 : -1;
             if (dir < 0 && std::max(std::fabs(lx), std::fabs(ly)) > 0.35f)
                 dir = std::fabs(ly) >= std::fabs(lx) ? (ly < 0 ? 0 : 1) : (lx < 0 ? 2 : 3);
-            if (dir != s.dir || (dir >= 0 && now_ >= s.next_repeat)) {
-                if (dir >= 0) {
-                    static const PadKey DIRS[4] = {PadKey::Up, PadKey::Down, PadKey::Left, PadKey::Right};
-                    keys_.push_back(DIRS[dir]);
-                    s.next_repeat = now_ + (dir != s.dir ? 0.4 : 0.11);
-                }
-                s.dir = dir;
-            }
+            menu_keys(s, pressed(accept), pressed(back) || pressed(SDL_GAMEPAD_BUTTON_BACK), pressed(SDL_GAMEPAD_BUTTON_START), dir);
         } else {
             s.dir = -1;
             st.fire = rt || down(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) || down(SDL_GAMEPAD_BUTTON_SOUTH);
@@ -302,6 +351,68 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
     }
 }
 
+// Accept, back and START pressed, and the direction held (0 up, 1 down,
+// 2 left, 3 right, -1 none), repeated while held
+void Gamepads::menu_keys(Slot& s, bool accept, bool back, bool start, int dir) {
+    if (accept) keys_.push_back(PadKey::Accept);
+    if (back) keys_.push_back(PadKey::Back);
+    if (start) keys_.push_back(PadKey::Start);
+    if (dir != s.dir || (dir >= 0 && now_ >= s.next_repeat)) {
+        if (dir >= 0) {
+            static const PadKey DIRS[4] = {PadKey::Up, PadKey::Down, PadKey::Left, PadKey::Right};
+            keys_.push_back(DIRS[dir]);
+            s.next_repeat = now_ + (dir != s.dir ? 0.4 : 0.11);
+        }
+        s.dir = dir;
+    }
+}
+
+// A flight stick or other plain joystick. Its stick is the lever: the sight
+// goes where the stick is held and back to the centre when it is let go, with
+// no curve, speed-up or aim assist (the hand already does what the cabinet's
+// yoke asked of it). Buttons by number: 1 fire, 2 the other trigger, 3 EVENT
+// (Star Wars; Lost World: reload too), 4 BACK (coin), 5 START. In the menus
+// the hat or the stick past half way move, 1 accepts, 2 goes back
+void Gamepads::poll_joystick(Slot& s, PadState& st, const GamepadSettings& set, bool focused, bool menu) {
+    SDL_Joystick* j = s.joy;
+    bool now_down[32] = {};
+    int nb = std::min(SDL_GetNumJoystickButtons(j), 32);
+    for (int b = 0; b < nb; b++) now_down[b] = SDL_GetJoystickButton(j, b);
+    auto pressed = [&](int b) { return now_down[b] && !s.buttons[b]; };
+    float x = flight_axis(j, 0), y = flight_axis(j, 1);
+    uint8_t hat = SDL_GetNumJoystickHats(j) > 0 ? SDL_GetJoystickHat(j, 0) : SDL_HAT_CENTERED;
+    bool any = x != 0 || y != 0 || hat != SDL_HAT_CENTERED;
+    for (bool d : now_down) any |= d;
+    if (any && focused) st.last_used = now_;
+
+    if (!focused) {
+        st.fire = st.reload = st.event = false;
+    } else if (menu) {
+        st.fire = st.reload = st.event = false;
+        int dir = hat & SDL_HAT_UP ? 0 : hat & SDL_HAT_DOWN ? 1 : hat & SDL_HAT_LEFT ? 2 : hat & SDL_HAT_RIGHT ? 3 : -1;
+        if (dir < 0 && std::max(std::fabs(x), std::fabs(y)) > 0.5f)
+            dir = std::fabs(y) >= std::fabs(x) ? (y < 0 ? 0 : 1) : (x < 0 ? 2 : 3);
+        menu_keys(s, pressed(0), pressed(1) || pressed(3), pressed(4), dir);
+    } else {
+        s.dir = -1;
+        st.fire = now_down[0];
+        st.reload = now_down[1] || (!kAnalogJoystick && now_down[2]);
+        st.event = kAnalogJoystick && now_down[2];
+        st.back = pressed(3);
+        st.start = pressed(4);
+        if (set.invert & 1) x = -x;
+        if (set.invert & 2) y = -y;
+        float ax = 0.5f + 0.5f * x, ay = 0.5f + 0.5f * y;
+        // Aims once moved from where it was (the mouse may have the sight now:
+        // a resting stick does not take it back)
+        if (std::fabs(ax - s.stick_x) + std::fabs(ay - s.stick_y) > 0.004f) {
+            st.aim_x = s.stick_x = ax, st.aim_y = s.stick_y = ay;
+            st.aimed = true;
+        }
+    }
+    std::copy(std::begin(now_down), std::end(now_down), std::begin(s.buttons));
+}
+
 // Aim assist on the target under the sight, or within a few pixels of it:
 // the sticks (and less so the gyroscope) slow down over it, the sight
 // follows it as it moves, and while a stick is moving it is drawn gently
@@ -356,6 +467,11 @@ std::vector<PadKey> Gamepads::take_keys() {
 }
 
 void Gamepads::rumble(int i, float low, float high, int ms) {
+    if (slot_[i].joy) {   // the few flight sticks with a motor
+        float k = RUMBLE_STRENGTH[std::clamp(set_.rumble, 0, 3)] * 65535.0f;
+        SDL_RumbleJoystick(slot_[i].joy, Uint16(std::clamp(low, 0.0f, 1.0f) * k), Uint16(std::clamp(high, 0.0f, 1.0f) * k),
+                           Uint32(ms));
+    }
     if (!slot_[i].pad) return;
     float k = RUMBLE_STRENGTH[std::clamp(set_.rumble, 0, 3)] * 65535.0f;
     SDL_RumbleGamepad(slot_[i].pad, Uint16(std::clamp(low, 0.0f, 1.0f) * k), Uint16(std::clamp(high, 0.0f, 1.0f) * k),
