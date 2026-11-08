@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>Sega's 1998 arcade game, running natively on PC.</b><br>
+  <b>Sega's 1998 arcade game, running natively on PC and Mac.</b><br>
   Not an emulator: the original code, recompiled to C++, with a modern Vulkan renderer.
 </p>
 
@@ -68,6 +68,8 @@ graphics from 2016 on, with current drivers).
    tools of Build Tools for Visual Studio 2022 (a few GB, accept the Windows prompt), then builds
    the game. It takes a while the first time; you can also drop `swtrilgy.zip` on `install.bat`.
 4. Play with `StarWarsTrilogy.exe`.
+
+On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by contributors).
 
 <details>
 <summary>Manual install</summary>
