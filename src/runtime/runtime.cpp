@@ -105,7 +105,7 @@ std::atomic<uint64_t> g_game_frames{0};
 // at full speed with nothing on screen: the game appears at the SEGA logo.
 std::atomic<bool> g_boot_skip{false};
 std::atomic<int> g_arcade_entry{0};
-std::atomic<bool> g_skip_attract{false}, g_game_over_menu{false};
+std::atomic<bool> g_skip_attract{false}, g_game_over_menu{false}, g_in_attract{false};
 std::atomic<int> g_debug_jump{-1};
 // Menus: the game stands still (and so does its sound) while set. The boot
 // screens still run through first, so Play starts at the SEGA logo.
@@ -1286,6 +1286,7 @@ void rt_event(Ctx& c) {
             }
             g_auto.apply(g_frame);
             attract_guard_frame();   // before the frame's picture is taken
+            g_in_attract = in_attract();
             stats_frame();
             video_snapshot();
             bool boot_done = g_arcade_entry ? arcade_entry_frame() : (g_frame % 4 == 0 && boot_logo_up()) || g_frame > 3000;
