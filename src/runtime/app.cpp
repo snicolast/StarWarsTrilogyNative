@@ -675,6 +675,7 @@ int main(int argc, char** argv) {
             std::fill(out.text_cells.begin(), out.text_cells.end(), 0u);
             out.hud_band = false;
             out.overlays.clear();
+            dogfight_draw_hud(out.front.data(), SCREEN_W, SCREEN_H);
         }
     };
     // Hands composed 2D layers to the renderer (their new pictures go separately)

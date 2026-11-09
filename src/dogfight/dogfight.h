@@ -8,6 +8,7 @@
 // So far: free flight (pitch, yaw, roll, throttle) among ships standing still.
 #pragma once
 #include <atomic>
+#include <cstdint>
 #include <memory>
 
 #include "../video/r3d_state.h"
@@ -34,6 +35,9 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene();
 float dogfight_speed();
 float dogfight_throttle();
 int dogfight_ships();
+// Its HUD into the game's 2D front layer (w x h BGRA, alpha in the top byte;
+// any thread: it reads the numbers above)
+void dogfight_draw_hud(uint32_t* front, int w, int h);
 
 // The mode's loop (runtime.cpp, game thread). begin: the stage is loaded
 // (called from the unseen run), the first native frame is published. run:

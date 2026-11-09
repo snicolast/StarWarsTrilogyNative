@@ -182,6 +182,7 @@ add_executable(StarWarsTrilogy
     src/runtime/scsi53c810.cpp
     src/runtime/stats.cpp
     src/dogfight/dogfight.cpp
+    src/dogfight/dogfight_hud.cpp
     src/ui/achievement_toast.cpp
     src/runtime/options.cpp
     src/runtime/rom_zip.cpp
@@ -282,7 +283,7 @@ if(LW_TESTS)
     add_executable(jtag_test tests/jtag_test.cpp src/runtime/jtag.cpp)
     add_executable(r3d_state_test tests/r3d_state_test.cpp)
     add_executable(news_test tests/news_test.cpp src/ui/news.cpp)
-    add_executable(dogfight_test tests/dogfight_test.cpp src/dogfight/dogfight.cpp)
+    add_executable(dogfight_test tests/dogfight_test.cpp src/dogfight/dogfight.cpp src/dogfight/dogfight_hud.cpp)
     foreach(t tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test dogfight_test)
         target_include_directories(${t} PRIVATE src/video src/common src/runtime src/audio src/ui ${MINIZ_DIR})
         if(MSVC)

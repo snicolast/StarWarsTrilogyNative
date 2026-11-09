@@ -72,6 +72,7 @@ struct Sim {
     std::vector<Ship> ships;
 };
 Sim g_sim;
+std::atomic<float> g_shown_speed{0}, g_shown_throttle{0};   // for the HUD, drawn on another thread
 
 // Speeds in the game's units (an X-wing is about 11 long: metres, roughly) per second
 constexpr float SPEED_MIN = 20, SPEED_MAX = 160;
@@ -86,6 +87,7 @@ float rnd(float lo, float hi) {
 void reset() {
     g_seed = 0x5EED1234;
     g_sim = Sim{};
+    g_shown_speed = g_sim.speed, g_shown_throttle = g_sim.throttle;
     auto add = [](const Shape& s, Vec pos, Frame at) { g_sim.ships.push_back({&s, pos, at}); };
     // Two capital ships ahead, one side on and one coming
     add(DESTROYER, {600, 250, 4200}, facing(1.9f, 0, 0.1f));
@@ -113,14 +115,15 @@ void step(float dt) {
     float agile = 1.0f - 0.33f * std::fabs(s.throttle - 0.5f) * 2.0f;
     s.at.turn(c.pitch * TURN_RATE * agile * dt, c.yaw * TURN_RATE * agile * dt, c.roll * ROLL_RATE * dt);
     s.pos = s.pos + s.at.fwd * (s.speed * dt);
+    g_shown_speed = s.speed, g_shown_throttle = s.throttle;
 }
 
 }  // namespace
 
 void dogfight_reset() { reset(); }
 void dogfight_step(float dt) { step(dt); }
-float dogfight_speed() { return g_sim.speed; }
-float dogfight_throttle() { return g_sim.throttle; }
+float dogfight_speed() { return g_shown_speed; }
+float dogfight_throttle() { return g_shown_throttle; }
 int dogfight_ships() { return int(g_sim.ships.size()); }
 
 std::shared_ptr<const R3DNativeScene> dogfight_scene() {

@@ -76,6 +76,23 @@ int main() {
         float z[3] = {it.m[1] * it.m[6] - it.m[2] * it.m[5], it.m[2] * it.m[4] - it.m[0] * it.m[6], it.m[0] * it.m[5] - it.m[1] * it.m[4]};
         CHECK(std::fabs(dot(z, it.m + 8) - 1) < 1e-3f);
     }
+    // The HUD: something drawn bottom left, nothing elsewhere, all of it opaque
+    {
+        const int w = 496, h = 384;
+        static uint32_t front[w * h];
+        fly(0, 0, 0, 1, 10);
+        dogfight_draw_hud(front, w, h);
+        int lit = 0, outside = 0, soft = 0;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                uint32_t p = front[y * w + x];
+                if (!p) continue;
+                lit++;
+                if (x > 200 || y < h - 60) outside++;
+                if ((p >> 24) != 0xFF) soft++;
+            }
+        CHECK(lit > 400 && outside == 0 && soft == 0);
+    }
     if (!g_failed) printf("dogfight: ok\n");
     return g_failed ? 1 : 0;
 }
