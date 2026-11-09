@@ -1,5 +1,6 @@
 #include "options.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 
@@ -121,6 +122,21 @@ const std::vector<Entry>& table() {
                [](Options& o, const char* v) { o.shot_frame = strtoull(v, nullptr, 10); }),
         text("--replay", "FILE", &Options::replay,
              "show a snapshot (F9) or play back a folder of them (LW_FILM)", true),
+        custom("--view-model", "A,B,...[@YAW[,PITCH]]",
+               "those models (hex addresses, out/model_catalog.txt) alone before the camera, turning unless YAW is given", true,
+               [](Options& o, const char* v) {
+                   o.view_models.clear();
+                   o.view_yaw = std::nanf(""), o.view_pitch = 20;
+                   const char* at = strchr(v, '@');
+                   for (const char* p = v; *p && (!at || p < at);) {
+                       char* end = nullptr;
+                       uint32_t a = uint32_t(strtoul(p, &end, 16));
+                       if (end == p) break;
+                       o.view_models.push_back(a);
+                       p = *end == ',' ? end + 1 : end;
+                   }
+                   if (at) sscanf(at + 1, "%f,%f", &o.view_yaw, &o.view_pitch);
+               }),
         custom("--auto", "coin@F,start@F", "press buttons on the given frames", true,
                [](Options& o, const char* v) { o.auto_scripts.push_back(v); }),
         custom("--aim", "X,Y", "gun fixed at ADC values X,Y (calibration)", true,

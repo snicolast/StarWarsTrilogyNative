@@ -149,6 +149,12 @@ public:
     // Replacement textures (nullptr = none)
     // Star Wars Trilogy, SKY: PROCEDURAL: Hoth's sky dome is not drawn (the procedural sky instead)
     void set_procedural_sky(bool on) { procedural_sky_ = on; }
+    // --view-model (debugging aid): these models alone before the camera, in
+    // place of the scene (yaw in degrees, NaN: turning; pitch in degrees)
+    void set_view_models(std::vector<uint32_t> models, float yaw, float pitch) {
+        view_models_ = std::move(models);
+        view_yaw_ = yaw, view_pitch_ = pitch;
+    }
     void set_texture_pack(TexturePack* pack, R3DTextureRam* ram) {
         pack_ = pack;
         texture_ram_ = ram;
@@ -176,6 +182,7 @@ private:
     void node_ptr(uint32_t ptr, const Mat& m, const Attribs& a, int depth);
     void pointer_list(uint32_t addr, const Mat& m, const Attribs& a, int depth);
     void model(uint32_t addr, const Mat& m, const Attribs& a);
+    void view_models(const R3DViewport& v);
     uint32_t model_word(uint32_t addr) const;
     Mat matrix(uint32_t index) const;
     void link_previous(R3DScene& out);
@@ -226,6 +233,9 @@ private:
     uint32_t node_key_ = 0, viewport_key_ = 0;
     std::vector<uint32_t> node_stack_;   // the nodes above the one being walked (model catalogue, r3d_catalog.h)
     int viewport_priority_ = 0;
+    std::vector<uint32_t> view_models_;   // --view-model
+    float view_yaw_ = 0, view_pitch_ = 0;
+    bool view_drawn_ = false;
     bool hud_edges_ = true;
     bool share_world_ = false;
     bool procedural_sky_ = false;

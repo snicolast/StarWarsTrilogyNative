@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -99,6 +100,7 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     visited_viewports_.clear();
     viewport_instances_.clear();
     node_stack_.clear();
+    view_drawn_ = false;
     using clock = std::chrono::steady_clock;
     auto ms = [](clock::time_point a, clock::time_point b) { return std::chrono::duration<float, std::milli>(b - a).count(); };
     auto t0 = clock::now();
@@ -481,7 +483,8 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
         trans_keys_.clear();
         viewport_key_ = addr;
         instances_.clear();
-        node_ptr(vp(0x02), base, Attribs{}, 0);
+        if (view_models_.empty() || v.priority == 0) node_ptr(vp(0x02), base, Attribs{}, 0);
+        else if (!view_drawn_ && v.priority < 3 && v.w >= 495 && v.h >= 380) view_models(v);
         v.build_index = uint32_t(viewport_instances_.size());
         viewport_instances_.push_back(std::move(instances_));
         instances_.clear();
@@ -500,6 +503,63 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
 
     uint32_t next = vp(1);
     if (next != 0x01000000 && (next & 0xFFFFFF)) viewport(next & 0xFFFFFF, depth + 1);
+}
+
+// --view-model (debugging aid): the models asked for, alone before the
+// camera of the first full-screen viewport of the scene (the stars, priority
+// 0, stay; everything else is left out), turned and as far away as fills the view
+void R3DSceneBuilder::view_models(const R3DViewport& v) {
+    view_drawn_ = true;
+    const float DEG = 3.14159265f / 180.0f;
+    float yaw = view_yaw_;
+    if (!std::isfinite(yaw)) {   // none given: a turn every 8 seconds (a scene built once, as --replay's, stays still)
+        using clock = std::chrono::steady_clock;
+        static const clock::time_point start = clock::now();
+        yaw = std::chrono::duration<float>(clock::now() - start).count() * 45.0f;
+    }
+    float cy = std::cos(yaw * DEG), sy = std::sin(yaw * DEG), cp = std::cos(view_pitch_ * DEG), sp = std::sin(view_pitch_ * DEG);
+    // GL view = T * Rx(pitch) * Ry(yaw) * C (C: Real3D axes to GL, as the viewport's)
+    float ry[16] = {cy, 0, -sy, 0, 0, 1, 0, 0, sy, 0, cy, 0, 0, 0, 0, 1};
+    float rx[16] = {1, 0, 0, 0, 0, cp, sp, 0, 0, -sp, cp, 0, 0, 0, 0, 1};
+    float cm[16] = {0, 0, -1, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 1};
+    Mat r{}, m{};
+    M4::mul(rx, ry, r.m);
+    M4::mul(r.m, cm, m.m);
+    for (uint32_t addr : view_models_) model(addr, m, Attribs{});
+    // Centred on its bounding box, at the distance where its sphere fits the view
+    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+    for (auto* list : {&opaque_, &trans_})
+        for (const R3DVertex& p : *list)
+            for (int i = 0; i < 3; i++) lo[i] = std::min(lo[i], p.pos[i]), hi[i] = std::max(hi[i], p.pos[i]);
+    if (opaque_.empty() && trans_.empty()) {
+        static bool told = false;
+        if (!told) printf("[view] nothing drawn (no polygons at those addresses)\n");
+        told = true;
+        return;
+    }
+    float centre[3], radius = 0;
+    for (int i = 0; i < 3; i++) centre[i] = (lo[i] + hi[i]) * 0.5f;
+    for (auto* list : {&opaque_, &trans_})
+        for (const R3DVertex& p : *list) {
+            float d[3] = {p.pos[0] - centre[0], p.pos[1] - centre[1], p.pos[2] - centre[2]};
+            radius = std::max(radius, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+        }
+    float narrow = std::max(std::fabs(v.proj[0]), std::fabs(v.proj[5]));
+    float dist = 1.15f * radius * std::sqrt(1.0f + narrow * narrow);
+    for (auto* list : {&opaque_, &trans_})
+        for (R3DVertex& p : *list) {
+            p.pos[0] -= centre[0], p.pos[1] -= centre[1];
+            p.pos[2] += -dist - centre[2];
+        }
+    for (R3DInstance& in : instances_) in.origin[0] -= centre[0], in.origin[1] -= centre[1], in.origin[2] += -dist - centre[2];
+    static bool told = false;
+    if (!told) {
+        printf("[view] %zu model(s): %zu polygons, radius %.2f, size %.2f x %.2f x %.2f (view x, y, z), seen from %.2f\n",
+               view_models_.size(), out_->polygons, radius, hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], dist);
+        for (const R3DInstance& in : instances_) printf("[view]   model %06X: %u polygons\n", in.model & 0xFFFFFF, in.polygons);
+        fflush(stdout);
+        told = true;
+    }
 }
 
 void R3DSceneBuilder::node_ptr(uint32_t ptr, const Mat& m, const Attribs& a, int depth) {

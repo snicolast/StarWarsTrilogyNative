@@ -381,6 +381,7 @@ int main(int argc, char** argv) {
     // it), so that would move pieces of planets and ships out of place
     builder.set_hud_edges(false);
     builder.set_share_world(true);
+    if (!g_opt.view_models.empty()) builder.set_view_models(g_opt.view_models, g_opt.view_yaw, g_opt.view_pitch);
     builder.set_procedural_sky(g_opt.sky_procedural);
     TexturePack pack;
     pack.init("textures", g_opt.dump_textures ? "out/textures" : "");

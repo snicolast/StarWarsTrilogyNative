@@ -57,6 +57,8 @@ struct Options {
     // Debugging and tests
     uint64_t shot_frame = 0;         // --shot N: screenshot of frame N, then exit
     std::string replay;              // --replay: a debug snapshot (or a folder of them) instead of the game
+    std::vector<uint32_t> view_models;   // --view-model A,B,...[@YAW[,PITCH]]: those models alone before the camera
+    float view_yaw = 0, view_pitch = 20;   // (yaw NaN: turning)
     std::vector<std::string> auto_scripts;   // --auto coin@F,start@F (each occurrence)
     bool fixed_aim = false;          // --aim X,Y: fixed raw gun ADC values
     int aim_x = 128, aim_y = 128;
