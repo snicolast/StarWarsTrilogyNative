@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -537,6 +538,12 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
                 burst(t, rng);
                 // A boom under the game's own sound, as loud as the explosion is big on the screen
                 explosion_boom(std::clamp(e.radius / -e.c.z * 7.0f, 0.3f, 1.0f));
+                // LW_SNDLOG (with the sound board's out/voices.csv): when each began
+                static FILE* log = getenv("LW_SNDLOG") ? fopen("out/explosions.csv", "w") : nullptr;
+                if (log) {
+                    fprintf(log, "%llu;%.4f;%.1f;%.1f\n", (unsigned long long)out.frame, e.radius / -e.c.z, e.c.x, e.c.z);
+                    fflush(log);
+                }
             } else {
                 t.broken = true;   // its ship is long gone
             }
