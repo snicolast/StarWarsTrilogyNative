@@ -73,7 +73,7 @@ struct Sim {
     std::vector<Ship> ships;
 };
 Sim g_sim;
-std::atomic<float> g_shown_speed{0}, g_shown_throttle{0};   // for the HUD, drawn on another thread
+std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};   // for the HUD, drawn on another thread
 
 // Speeds in the game's units (an X-wing is about 11 long: metres, roughly) per second
 constexpr float SPEED_MIN = 20, SPEED_MAX = 160;
@@ -117,15 +117,27 @@ void step(float dt) {
     s.at.turn(c.pitch * TURN_RATE * agile * dt, c.yaw * TURN_RATE * agile * dt, c.roll * ROLL_RATE * dt);
     s.pos = s.pos + s.at.fwd * (s.speed * dt);
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
+    float nearest = 0;
+    for (const Ship& ship : s.ships) {
+        Vec d = ship.pos + s.pos * -1;
+        float dist = std::sqrt(dot(d, d));
+        if (nearest == 0 || dist < nearest) nearest = dist;
+    }
+    g_shown_nearest = nearest;
 }
 
 }  // namespace
 
-void dogfight_reset() { reset(); }
+void dogfight_reset() {
+    static const bool cockpit = dogfight_cockpit_load("models/cockpit");
+    (void)cockpit;
+    reset();
+}
 void dogfight_step(float dt) { step(dt); }
 float dogfight_speed() { return g_shown_speed; }
 float dogfight_throttle() { return g_shown_throttle; }
 int dogfight_ships() { return int(g_sim.ships.size()); }
+float dogfight_nearest() { return g_shown_nearest; }
 
 std::shared_ptr<const R3DNativeScene> dogfight_scene() {
     auto scene = std::make_shared<R3DNativeScene>();
@@ -144,7 +156,9 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
     } eye;
     Vec cam = s.pos + s.at.right * eye.right + s.at.down * -eye.up + s.at.fwd * eye.fwd;
     scene->cam_pos[0] = cam.x, scene->cam_pos[1] = cam.y, scene->cam_pos[2] = cam.z;
-    if (eye.ship) {
+    // (a cockpit of the user's takes the place of the game's ship round the camera)
+    if (dogfight_cockpit_on()) dogfight_cockpit_add(*scene);
+    else if (eye.ship) {
         R3DNativeScene::Item it;
         it.count = XWING.count;
         memcpy(it.models, XWING.models, sizeof(it.models));

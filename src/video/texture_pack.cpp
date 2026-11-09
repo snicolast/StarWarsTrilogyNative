@@ -95,6 +95,25 @@ uint32_t TexturePack::resolve(uint32_t tex, R3DTextureRam& ram, uint64_t& genera
     return slot;
 }
 
+uint32_t TexturePack::add_file(const std::string& path) {
+    auto known = files_.find(path);
+    if (known != files_.end()) return known->second;
+    uint32_t& slot = files_[path];
+    slot = 0;
+    RgbaImage img;
+    if (slots_.size() + 1 >= slot_limit_ || !png_load(path, img.w, img.h, img.rgba)) {
+        fprintf(stderr, "[textures] could not load %s\n", path.c_str());
+        return 0;
+    }
+    // (its slot is taken like a replacement's, under a hash of its name)
+    uint64_t hash = fnv1a_bytes(path.data(), path.size(), 0x5357544D45534831ull);
+    slot = uint32_t(slots_.size() + 1);
+    img.slot = slot;
+    slots_[hash] = slot;
+    pending_.push_back(std::move(img));
+    return slot;
+}
+
 std::vector<RgbaImage> TexturePack::take_new_images() {
     std::vector<RgbaImage> out;
     out.swap(pending_);

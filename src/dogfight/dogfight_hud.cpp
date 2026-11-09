@@ -5,35 +5,9 @@
 #include <cstring>
 
 #include "dogfight.h"
+#include "dogfight_font.h"
 
 namespace {
-
-// 5 x 7 letters, a row a string ('#' lit)
-struct Glyph {
-    char c;
-    const char* rows[7];
-};
-const Glyph GLYPHS[] = {
-    {'0', {" ### ", "#   #", "#  ##", "# # #", "##  #", "#   #", " ### "}},
-    {'1', {"  #  ", " ##  ", "  #  ", "  #  ", "  #  ", "  #  ", " ### "}},
-    {'2', {" ### ", "#   #", "    #", "   # ", "  #  ", " #   ", "#####"}},
-    {'3', {" ### ", "#   #", "    #", "  ## ", "    #", "#   #", " ### "}},
-    {'4', {"   # ", "  ## ", " # # ", "#  # ", "#####", "   # ", "   # "}},
-    {'5', {"#####", "#    ", "#### ", "    #", "    #", "#   #", " ### "}},
-    {'6', {" ### ", "#    ", "#### ", "#   #", "#   #", "#   #", " ### "}},
-    {'7', {"#####", "    #", "   # ", "  #  ", "  #  ", "  #  ", "  #  "}},
-    {'8', {" ### ", "#   #", "#   #", " ### ", "#   #", "#   #", " ### "}},
-    {'9', {" ### ", "#   #", "#   #", " ####", "    #", "    #", " ### "}},
-    {'S', {" ####", "#    ", "#    ", " ### ", "    #", "    #", "#### "}},
-    {'P', {"#### ", "#   #", "#   #", "#### ", "#    ", "#    ", "#    "}},
-    {'E', {"#####", "#    ", "#    ", "#### ", "#    ", "#    ", "#####"}},
-    {'D', {"#### ", "#   #", "#   #", "#   #", "#   #", "#   #", "#### "}},
-    {'T', {"#####", "  #  ", "  #  ", "  #  ", "  #  ", "  #  ", "  #  "}},
-    {'H', {"#   #", "#   #", "#   #", "#####", "#   #", "#   #", "#   #"}},
-    {'R', {"#### ", "#   #", "#   #", "#### ", "# #  ", "#  # ", "#   #"}},
-    {'O', {" ### ", "#   #", "#   #", "#   #", "#   #", "#   #", " ### "}},
-    {'L', {"#    ", "#    ", "#    ", "#    ", "#    ", "#    ", "#####"}},
-};
 
 struct Canvas {
     uint32_t* px;
@@ -54,7 +28,7 @@ struct Canvas {
         for (int pass = 0; pass < 2; pass++) {
             int at = x;
             for (const char* p = s; *p; p++, at += 6) {
-                for (const Glyph& g : GLYPHS) {
+                for (const DogfightGlyph& g : DOGFIGHT_GLYPHS) {
                     if (g.c != *p) continue;
                     for (int r = 0; r < 7; r++)
                         for (int c = 0; c < 5; c++) {
@@ -76,6 +50,7 @@ constexpr uint32_t GREEN = 0xFF30E040u, YELLOW = 0xFFF0E020u, DIM = 0xFF104018u,
 }  // namespace
 
 void dogfight_draw_hud(uint32_t* front, int w, int h) {
+    if (dogfight_cockpit_on()) return;   // the cockpit's screen shows them instead
     Canvas cv{front, w, h};
     // Bottom left: SPEED and its number, the throttle as a bar under it
     int x = 22, y = h - 44;

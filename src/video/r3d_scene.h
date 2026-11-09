@@ -184,6 +184,7 @@ private:
     void model(uint32_t addr, const Mat& m, const Attribs& a);
     void view_models(const R3DViewport& v);
     void native_items();
+    void native_fixed(R3DScene& out);
     uint32_t model_word(uint32_t addr) const;
     Mat matrix(uint32_t index) const;
     void link_previous(R3DScene& out);
@@ -238,6 +239,9 @@ private:
     float view_yaw_ = 0, view_pitch_ = 0;
     bool view_drawn_ = false;
     const R3DNativeScene* native_ = nullptr;   // the frame being built is the PC's own scene (R3DFrameState::native)
+    uint32_t native_viewport_ = 0;             // the viewport node its objects were drawn in
+    std::shared_ptr<const std::vector<R3DNativeScene::Mesh>> fixed_src_;   // native_fixed: the meshes fixed_ was made from
+    std::vector<R3DVertex> fixed_;                                         // ... as vertices, kept from frame to frame
     bool hud_edges_ = true;
     bool share_world_ = false;
     bool procedural_sky_ = false;

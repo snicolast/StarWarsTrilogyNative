@@ -8,6 +8,8 @@ StarWarsTrilogy.exe
 Star Wars Trilogy.app/
 save/
 textures/
+# A cockpit the user imported (tools/import_cockpit.py)
+models/
 *.dll
 *.spv
 third_party/ngx/

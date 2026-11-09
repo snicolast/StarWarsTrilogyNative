@@ -15,6 +15,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -35,6 +36,22 @@ struct R3DNativeScene {
         uint32_t key = 0;          // the same from frame to frame (interpolation)
     };
     std::vector<Item> items;
+    // Things of the PC's own fixed to the camera, drawn over the scene (the
+    // cockpit of src/dogfight/dogfight_cockpit.cpp). In view space: x right,
+    // y up, -z ahead, in the world's units
+    struct Vertex {
+        float pos[3] = {};
+        float nrm[3] = {};
+        float uv[2] = {};               // v downwards (the image's rows)
+        uint32_t color = 0xFFFFFFFFu;   // RGBA8, R in the low byte
+    };
+    struct Mesh {
+        std::string texture;   // an image file ("": none, the vertices' colour alone)
+        std::vector<Vertex> verts;   // three a triangle
+    };
+    std::shared_ptr<const std::vector<Mesh>> fixed;   // lit by the set's sun; the same object while it does not change
+    std::vector<Vertex> lights;                       // glowing, untextured, over them (the cockpit's screen)
+    float fov = 0;   // vertical field of view in degrees (0: the set's)
 };
 
 struct R3DFrameState {

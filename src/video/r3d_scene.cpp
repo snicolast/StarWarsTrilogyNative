@@ -135,6 +135,7 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     auto t4 = clock::now();
     link_previous(out);
     if (share_world_) r3d_swt_explosions(out, viewport_instances_);   // adds vertices: after the pairing
+    if (native_ && view_drawn_) native_fixed(out);                    // (so does this)
     auto t5 = clock::now();
     if (r3d_catalog_on()) r3d_catalog_frame(state.frame);
     stage_ms_[0] = ms(t0, t1), stage_ms_[1] = ms(t1, t2), stage_ms_[2] = ms(t2, t3), stage_ms_[3] = ms(t3, t4), stage_ms_[4] = ms(t4, t5);
@@ -422,6 +423,14 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
         p[9] = -(t + b) / (t - b);
         p[14] = near_z;
         p[11] = -1;
+        // A native scene with a field of view of its own (DOGFIGHT's cockpit
+        // needs a wider one): the same for every full-screen view of the set
+        // below the HUD, the stars too
+        if (native_ && native_->fov > 1 && native_->fov < 170 && v.priority < 3 && v.w >= 495 && v.h >= 380 && p[5] != 0) {
+            float k = 1.0f / std::tan(native_->fov * 3.14159265f / 360.0f) / std::fabs(p[5]);
+            p[0] *= k;
+            p[5] *= k;
+        }
 
         v.sun[0] = vpf(0x05);
         v.sun[1] = -vpf(0x06);
@@ -532,6 +541,7 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
 // of the set: GL view = D * [A^T | -A^T * pos] * model-to-world
 void R3DSceneBuilder::native_items() {
     view_drawn_ = true;
+    native_viewport_ = viewport_key_;
     const float* a = native_->cam_axes;
     const float* p = native_->cam_pos;
     static const float D[3] = {1, -1, -1};
@@ -549,6 +559,71 @@ void R3DSceneBuilder::native_items() {
         for (int i = 0; i < it.count; i++) model(it.models[i], m, Attribs{});
     }
     node_key_ = saved;
+}
+
+// A native scene's things fixed to the camera (R3DNativeScene::fixed and
+// lights: DOGFIGHT's cockpit and its screen), in a viewport of their own
+// after every other: the scene's projection, the HUD's priority (drawn last,
+// over a cleared depth: nothing of the world comes before them, and the
+// world's ambient occlusion and atmosphere leave them alone). They do not
+// move on the screen, so they need no pairing with the previous frame.
+void R3DSceneBuilder::native_fixed(R3DScene& out) {
+    if ((!native_->fixed || native_->fixed->empty()) && native_->lights.empty()) return;
+    const R3DViewport* scene = nullptr;
+    for (const R3DViewport& v : out.viewports)
+        if (v.node == native_viewport_) scene = &v;
+    if (!scene) return;
+    R3DViewport v;
+    memcpy(v.proj, scene->proj, sizeof(v.proj));
+    v.priority = 3;
+    v.x = scene->x, v.y = scene->y, v.w = scene->w, v.h = scene->h;
+    v.node = scene->node;
+    v.build_index = UINT32_MAX;   // (no models of the game's in it)
+    // Its light is worked out here (R3D_FIXED_SHADE): the set's sun on each
+    // vertex over a floor, so the side away from the sun is not black
+    v.sun_intensity = 1;
+    v.ambient = 0;
+
+    if (fixed_src_ != native_->fixed) {
+        fixed_src_ = native_->fixed;
+        fixed_.clear();
+        if (fixed_src_)
+            for (const R3DNativeScene::Mesh& mesh : *fixed_src_) {
+                uint32_t slot = !mesh.texture.empty() && pack_ ? pack_->add_file(mesh.texture) : 0;
+                for (const R3DNativeScene::Vertex& q : mesh.verts) {
+                    R3DVertex o{};
+                    memcpy(o.pos, q.pos, 12);
+                    memcpy(o.prev, q.pos, 12);
+                    memcpy(o.nrm, q.nrm, 12);
+                    memcpy(o.uv, q.uv, 8);
+                    o.color = q.color;
+                    o.flags = R3D_FIXED_SHADE | (slot ? R3D_TEXTURED : 0);
+                    o.replace = slot;
+                    fixed_.push_back(o);
+                }
+            }
+    }
+    const float* sun = scene->sun;
+    float sun_len = std::sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
+    float lit = sun_len > 0 ? 0.75f / sun_len : 0;
+    for (R3DVertex& o : fixed_)
+        o.shade = 0.35f + lit * std::max(0.0f, o.nrm[0] * sun[0] + o.nrm[1] * sun[1] + o.nrm[2] * sun[2]);
+
+    auto& verts = out.vertices;
+    v.opaque_first = uint32_t(verts.size());
+    verts.insert(verts.end(), fixed_.begin(), fixed_.end());
+    for (const R3DNativeScene::Vertex& q : native_->lights) {
+        R3DVertex o{};
+        memcpy(o.pos, q.pos, 12);
+        memcpy(o.prev, q.pos, 12);
+        o.color = q.color;
+        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;   // (with shade 0 and no ambient: its colour as it is)
+        verts.push_back(o);
+    }
+    v.opaque_count = uint32_t(verts.size()) - v.opaque_first;
+    v.trans_first = uint32_t(verts.size());
+    out.polygons += v.opaque_count / 3;
+    out.viewports.push_back(v);
 }
 
 // --view-model (debugging aid): the models asked for, alone before the

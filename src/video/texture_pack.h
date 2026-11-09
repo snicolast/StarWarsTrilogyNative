@@ -28,6 +28,10 @@ public:
     // Replacement slot for a polygon texture word (R3DVertex::tex), 0 = none
     uint32_t lookup(uint32_t tex, R3DTextureRam& ram);
 
+    // An image of the PC's own (not a replacement: DOGFIGHT's cockpit) in a
+    // slot of its own, 0 if it cannot be read or no slot is left
+    uint32_t add_file(const std::string& path);
+
     // Replacements loaded since the last call, to be uploaded by the renderer
     std::vector<RgbaImage> take_new_images();
 
@@ -48,6 +52,7 @@ private:
     std::unordered_set<uint64_t> available_;               // hashes with a replacement file
     std::unordered_map<uint64_t, uint32_t> slots_;         // loaded hash -> slot
     std::unordered_set<uint64_t> dumped_;
+    std::unordered_map<std::string, uint32_t> files_;      // add_file: path -> slot
     std::vector<RgbaImage> pending_;
     std::vector<uint16_t> texels_;
     std::vector<uint8_t> rgba_;
