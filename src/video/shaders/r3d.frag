@@ -341,6 +341,7 @@ vec4 explosion(out float glow_k) {
         float flash = (1.0 - smoothstep(0.0, 0.12, t)) * exp(-dot(q, q) * 5.0) * (0.7 + 0.6 * n);
         c.rgb += vec3(1.0, 0.95, 0.85) * flash * 8.0;
         c.a = max(c.a, clamp(flash * 1.5, 0.0, 1.0));
+        c.rgb *= color.rgb;   // its tint (white = none)
     } else if (kind == 1u) {   // a spark: a streak, its head (x = 1) brightest
         float across = 1.0 - q.y * q.y;
         float along = smoothstep(0.0, 1.0, q.x);

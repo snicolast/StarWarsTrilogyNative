@@ -120,6 +120,13 @@ struct Track {
     std::vector<Chunk> chunks;
     bool broken = false;   // its ship was found and broken into chunks
     int age = 0;           // game frames since it appeared
+    // Its look, from its seed, so no two are quite alike
+    enum Style { ROUND, STRETCHED, CLUSTER } style = ROUND;
+    V3 axis{0, 0, 1};      // space's orientation: the way a stretched one is drawn out, and its sparks fly
+    float stretch = 1;     // the fireball's length over its width
+    float scale = 1;       // the fireball's size over the sprite's
+    uint32_t tint = 0xFFFFFFFFu;   // the fire's colour (white = as drawn)
+    float sparks = 1, speed = 1, smoke = 1;
 };
 
 struct Found {
@@ -151,12 +158,36 @@ uint32_t rgba(float r, float g, float b, float a = 1) {
     return c(r) | c(g) << 8 | c(b) << 16 | c(a) << 24;
 }
 
+// Its look: round (as the sprite), drawn out along an axis (its sparks
+// thrown mostly that way), or a cluster of a few smaller blasts
+void pick_style(Track& t, Rng& rng) {
+    float pick = rng.f();
+    t.style = pick < 0.4f ? Track::ROUND : pick < 0.75f ? Track::STRETCHED : Track::CLUSTER;
+    t.axis = rng.dir();
+    t.stretch = t.style == Track::STRETCHED ? rng.r(1.5f, 2.1f) : rng.r(1.0f, 1.15f);
+    t.scale = t.style == Track::CLUSTER ? rng.r(0.8f, 0.95f) : rng.r(0.9f, 1.15f);
+    t.sparks = rng.r(0.6f, 1.5f);
+    t.speed = rng.r(0.8f, 1.3f);
+    t.smoke = rng.r(0.6f, 1.4f);
+    float warm = rng.f();   // 0 as drawn .. 1 a deeper orange
+    warm *= warm;
+    t.tint = rgba(1.0f, 1.0f - 0.12f * warm, 1.0f - 0.3f * warm);
+}
+
+// A direction to throw something: along the axis for a stretched one
+V3 throw_dir(const Track& t, Rng& rng) {
+    V3 d = rng.dir();
+    if (t.style != Track::STRETCHED) return d;
+    return normalize(d + t.axis * ((rng.f() < 0.5f ? -1.0f : 1.0f) * 1.6f));
+}
+
 void burst(Track& t, Rng& rng) {
     float R = t.radius;
     // Sparks: fast thin streaks, white-hot to yellow
-    for (int i = 0; i < 28; i++) {
+    int n_sparks = int(28 * t.sparks);
+    for (int i = 0; i < n_sparks; i++) {
         Particle p(SPARK);
-        p.v = rng.dir() * (R * rng.r(1.6f, 4.2f));
+        p.v = throw_dir(t, rng) * (R * rng.r(1.6f, 4.2f) * t.speed);
         p.p = p.v * 0.02f;
         p.life = rng.r(0.25f, 0.6f);
         p.size = R * rng.r(0.012f, 0.022f);
@@ -170,7 +201,7 @@ void burst(Track& t, Rng& rng) {
     for (int i = 0; i < 6; i++) {
         Particle p(SPARK);
         p.ember = true;
-        p.v = rng.dir() * (R * rng.r(0.9f, 2.0f));
+        p.v = throw_dir(t, rng) * (R * rng.r(0.9f, 2.0f) * t.speed);
         p.life = rng.r(1.0f, 1.7f);
         p.size = R * rng.r(0.025f, 0.04f);
         p.drag = 0.5f;
@@ -180,8 +211,25 @@ void burst(Track& t, Rng& rng) {
         p.puff = rng.r(0.0f, 0.05f);
         t.parts.push_back(p);
     }
+    // A cluster: a few smaller blasts about the first, a moment after it
+    if (t.style == Track::CLUSTER) {
+        int n = 2 + int(rng.f() * 2.0f);
+        for (int i = 0; i < n; i++) {
+            Particle p(FIREBALL);
+            p.p = rng.dir() * (R * rng.r(0.5f, 0.85f));
+            p.v = p.p * rng.r(0.3f, 0.8f);
+            p.drag = 1.0f;
+            p.age = -rng.r(0.04f, 0.22f);   // not drawn until it is >= 0
+            p.life = rng.r(0.55f, 0.8f);
+            p.size = R * rng.r(0.4f, 0.6f);
+            p.color = t.tint;
+            p.seed = hash32(t.seed + 400 + i);
+            t.parts.push_back(p);
+        }
+    }
     // Pieces of hull, tumbling, glowing hot at first
-    for (int i = 0; i < 8; i++) {
+    int n_debris = 5 + int(rng.f() * 6.0f);
+    for (int i = 0; i < n_debris; i++) {
         Particle p(DEBRIS);
         p.v = rng.dir() * (R * rng.r(0.6f, 1.9f));
         p.life = rng.r(1.2f, 2.2f);
@@ -200,9 +248,10 @@ void burst(Track& t, Rng& rng) {
 // The smoke left where the fireball was
 void smoke_cloud(Track& t, Rng& rng) {
     float R = t.radius;
-    for (int i = 0; i < 8; i++) {
+    int n = int(8 * t.smoke + 0.5f);
+    for (int i = 0; i < n; i++) {
         Particle p(SMOKE);
-        p.p = rng.dir() * (R * rng.r(0.1f, 0.5f));
+        p.p = throw_dir(t, rng) * (R * rng.r(0.1f, 0.5f) * t.stretch);
         p.v = rng.dir() * (R * rng.r(0.05f, 0.2f));
         p.life = rng.r(1.2f, 2.0f);
         p.size = R * rng.r(0.2f, 0.35f);
@@ -292,8 +341,17 @@ void draw(const Track& t, const Frame& f, std::vector<R3DVertex>& out) {
         V3 c = anchor + f.view(p.p);
         V3 delta = p.has_prev ? c - p.prev_view : V3{};
         float age = p.age / p.life;
+        if (age < 0) continue;   // a cluster's blast still to come
         R3DVertex q[4];
-        if (p.kind == SPARK) {
+        if (p.kind == FIREBALL) {   // a cluster's smaller blast
+            V3 d = normalize(c * -1.0f);
+            V3 r = normalize(cross(V3{0, 1, 0}, d)), u = cross(d, r);
+            float s = p.size * QUAD;
+            V3 corner[4] = {c - r * s - u * s, c + r * s - u * s, c + r * s + u * s, c - r * s + u * s};
+            float uv[4][2] = {{-QUAD, -QUAD}, {QUAD, -QUAD}, {QUAD, QUAD}, {-QUAD, QUAD}};
+            for (int k = 0; k < 4; k++)
+                q[k] = vertex(corner[k], corner[k] - delta, d, uv[k][0], uv[k][1], FIREBALL, p.seed, age, p.size, t.fog, p.color);
+        } else if (p.kind == SPARK) {
             // A streak along its motion, turned to face the eye
             V3 vel = f.view(p.v);
             float streak = p.ember ? 0.03f : 0.05f;
@@ -536,6 +594,7 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
             t.radius = e.radius;
             t.frame = e.frame;
             Rng rng{t.seed};
+            pick_style(t, rng);
             if (e.frame <= 16) {   // seen from the start (not an explosion coming into view)
                 burst(t, rng);
                 // The game's own sound (explosion_sound.h), panned to where it is on the screen
@@ -621,9 +680,10 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
     // opaque list) collapse to nothing
     for (size_t i = 0; i < found.size(); i++) {
         Found& e = found[i];
-        uint32_t seed = 0;
+        const Track* tr = nullptr;
         for (const Track& t : g_tracks)
-            if (t.id == e.track_id) seed = t.seed;
+            if (t.id == e.track_id) tr = &t;
+        uint32_t seed = tr ? tr->seed : 0;
         auto collapse = [&](uint32_t k) {
             for (int j = 0; j < 3; j++) {
                 R3DVertex& x = out.vertices[k + j];
@@ -635,14 +695,25 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
         for (uint32_t k : e.opaque) collapse(k);
         V3 d = normalize(e.c * -1.0f);
         V3 r = normalize(cross(V3{0, 1, 0}, d)), u = cross(d, r);
-        float s = e.radius * QUAD;
+        float s = e.radius * QUAD * (tr ? tr->scale : 1.0f);
+        float sr = s, su = s;
+        if (tr && tr->stretch > 1.0f) {   // drawn out along its axis as seen on the screen
+            V3 a = f.view(tr->axis);
+            V3 on = a - d * dot(a, d);
+            float len = length(on);
+            if (len > 0.05f) {
+                r = on * (1.0f / len), u = cross(d, r);
+                float k = 1.0f + (tr->stretch - 1.0f) * len;
+                sr = s * k, su = s / std::sqrt(k);
+            }
+        }
         float t = float(e.frame - FIRST_FRAME) / float(LAST_FRAME - FIRST_FRAME);
         V3 move = e.prev - e.c;
-        V3 corner[4] = {e.c - r * s - u * s, e.c + r * s - u * s, e.c + r * s + u * s, e.c - r * s + u * s};
+        V3 corner[4] = {e.c - r * sr - u * su, e.c + r * sr - u * su, e.c + r * sr + u * su, e.c - r * sr + u * su};
         float uv[4][2] = {{-QUAD, -QUAD}, {QUAD, -QUAD}, {QUAD, QUAD}, {-QUAD, QUAD}};
         R3DVertex q[4];
         for (int k = 0; k < 4; k++)
-            q[k] = vertex(corner[k], corner[k] + move, d, uv[k][0], uv[k][1], FIREBALL, seed, t, e.radius, e.fog, 0xFFFFFFFFu);
+            q[k] = vertex(corner[k], corner[k] + move, d, uv[k][0], uv[k][1], FIREBALL, seed, t, e.radius, e.fog, tr ? tr->tint : 0xFFFFFFFFu);
         const int order[6] = {0, 1, 2, 0, 2, 3};
         for (size_t j = 0; j < e.trans.size(); j++) {
             if (j < 2) {
