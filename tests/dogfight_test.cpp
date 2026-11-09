@@ -37,7 +37,7 @@ static float dot(const float* a, const float* b) { return a[0] * b[0] + a[1] * b
 int main() {
     // World axes: x right, y down, z forward
     Flown straight = fly(0, 0, 0, 0, 1);
-    CHECK(straight.pos[2] > 20 && std::fabs(straight.pos[0]) < 1e-3f && std::fabs(straight.pos[1]) < 1e-3f);
+    CHECK(straight.pos[2] > 20 && std::fabs(straight.pos[0]) < 1e-3f && std::fabs(straight.pos[1] + 1) < 1e-3f);   // (the eye: 1 above the ship)
     Flown right = fly(0, 1, 0, 0, 0.5f);
     CHECK(right.fwd[0] > 0.3f && std::fabs(right.fwd[1]) < 1e-3f);   // the nose to the right, level
     Flown up = fly(1, 0, 0, 0, 0.5f);
@@ -68,7 +68,7 @@ int main() {
 
     // The scene: every ship has its models and a square matrix
     auto scene = dogfight_scene();
-    CHECK(int(scene->items.size()) == dogfight_ships() && dogfight_ships() > 10);
+    CHECK(int(scene->items.size()) == dogfight_ships() + 1 && dogfight_ships() > 10);   // and the player's own
     for (const auto& it : scene->items) {
         CHECK(it.count >= 1 && it.count <= 4 && it.models[0] != 0 && it.m[15] == 1);
         CHECK(std::fabs(dot(it.m, it.m) - 1) < 1e-3f && std::fabs(dot(it.m, it.m + 4)) < 1e-3f);

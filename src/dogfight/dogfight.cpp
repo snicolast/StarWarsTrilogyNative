@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -129,7 +130,30 @@ int dogfight_ships() { return int(g_sim.ships.size()); }
 std::shared_ptr<const R3DNativeScene> dogfight_scene() {
     auto scene = std::make_shared<R3DNativeScene>();
     const Sim& s = g_sim;
-    scene->cam_pos[0] = s.pos.x, scene->cam_pos[1] = s.pos.y, scene->cam_pos[2] = s.pos.z;
+    // The player's own X-wing round the camera: the eye sits in its cockpit, so
+    // the nose and the cannons show ahead. Where, from the model's origin:
+    // SWT_DOGFIGHT_EYE=right,up,forward (units; "off": no ship, the bare view)
+    static const struct Eye {
+        bool ship = true;
+        float right = 0, up = 1.0f, fwd = -1.0f;
+        Eye() {
+            const char* e = getenv("SWT_DOGFIGHT_EYE");
+            if (!e) return;
+            if (sscanf(e, "%f,%f,%f", &right, &up, &fwd) != 3) ship = false, right = up = fwd = 0;
+        }
+    } eye;
+    Vec cam = s.pos + s.at.right * eye.right + s.at.down * -eye.up + s.at.fwd * eye.fwd;
+    scene->cam_pos[0] = cam.x, scene->cam_pos[1] = cam.y, scene->cam_pos[2] = cam.z;
+    if (eye.ship) {
+        R3DNativeScene::Item it;
+        it.count = XWING.count;
+        memcpy(it.models, XWING.models, sizeof(it.models));
+        const Vec cols[4] = {s.at.right * -1, s.at.down * -1, s.at.fwd, s.pos};
+        for (int c = 0; c < 4; c++) it.m[c * 4] = cols[c].x, it.m[c * 4 + 1] = cols[c].y, it.m[c * 4 + 2] = cols[c].z;
+        it.m[15] = 1;
+        it.key = 0xFFFF;
+        scene->items.push_back(it);
+    }
     const Vec axes[3] = {s.at.right, s.at.down, s.at.fwd};
     for (int i = 0; i < 3; i++) scene->cam_axes[i * 3] = axes[i].x, scene->cam_axes[i * 3 + 1] = axes[i].y, scene->cam_axes[i * 3 + 2] = axes[i].z;
     uint32_t key = 1;
