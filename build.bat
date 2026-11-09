@@ -20,9 +20,9 @@ rem drive_program.bin too: data\ from an older build.bat can lack it (a set with
 rem epr-21119), and the game then stops at FAILED FEEDBACK LEVER INITIALIZE
 if exist data\crom.bin if exist data\drive_program.bin goto rom_ok
 if not exist "%ZIP%" goto no_rom
-%SWT_PY% tools\romtool.py "%ZIP%" data || goto fail
+%BUILD_PY% tools\romtool.py "%ZIP%" data || goto fail
 :rom_ok
-%SWT_PY% tools\recomp.py data\crom.bin build\gen || goto fail
+%BUILD_PY% tools\recomp.py data\crom.bin build\gen || goto fail
 rem NVIDIA DLSS SDK (not in the repository): fetched from NVIDIA's GitHub the first time.
 rem Every file is checked, not only the library: a third_party\ngx left incomplete
 rem (an interrupted download, files copied by hand) is fetched again (issue #32)
