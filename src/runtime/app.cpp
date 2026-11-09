@@ -908,6 +908,12 @@ int main(int argc, char** argv) {
                 case Frontend::Action::StartDogfight:   // DOGFIGHT: Yavin's first phase as its stage (src/dogfight)
                     if (!kAnalogJoystick) break;
                     if (a == Frontend::Action::StartDogfight) {
+                        // The user's cockpit, if any: its images go to the GPU with the
+                        // frames built while the stage loads, not with the first one flown
+                        if (dogfight_cockpit_load("models/cockpit")) {
+                            std::lock_guard<std::mutex> lock(prep_mutex);
+                            for (const std::string& image : dogfight_cockpit_textures()) pack.add_file(image);
+                        }
                         g_debug_jump = 0;
                         g_dogfight = 1;
                     } else {
@@ -1164,6 +1170,16 @@ int main(int argc, char** argv) {
             // motion back
             late = std::clamp(late, 0.0, 0.05);
             lateness = late > lateness ? late + 0.0015 : std::max(lateness - 0.00003, late);
+            // DOGFIGHT: the stage was loaded in a hurry, unseen, and the flight's
+            // first frames come late (its scene is built for the first time).
+            // Measured afresh half a second in: eased down from there, the
+            // picture ran more than two frames behind for many seconds, and
+            // every other frame of the flight was skipped (motion in steps)
+            static int was_flying = 0, settle = 0;
+            const int flying = g_dogfight.load();
+            if (flying == 2 && was_flying != 2) settle = 30;
+            was_flying = flying;
+            if (settle > 0 && --settle == 0) lateness = late + 0.0015;
             seen = latest;
         }
         double shown_time = display - lateness - next_period - 0.0005;

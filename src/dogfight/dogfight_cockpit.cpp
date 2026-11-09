@@ -42,7 +42,7 @@ struct Cockpit {
     bool on = false;
     std::shared_ptr<const std::vector<R3DNativeScene::Mesh>> meshes;
     Panel panel;
-    float fov = 60;
+    float fov = 52;
 };
 Cockpit g_cockpit;
 
@@ -91,11 +91,22 @@ constexpr uint32_t GROUND = 0xFF0A1C06u, GREEN = 0xFF50F040u, YELLOW = 0xFF30E0F
 
 bool dogfight_cockpit_on() { return g_cockpit.on; }
 
+std::vector<std::string> dogfight_cockpit_textures() {
+    std::vector<std::string> out;
+    if (g_cockpit.on)
+        for (const R3DNativeScene::Mesh& m : *g_cockpit.meshes)
+            if (!m.texture.empty()) out.push_back(m.texture);
+    return out;
+}
+
 bool dogfight_cockpit_load(const char* dir) {
+    static bool tried = false;   // once: it is asked for when the mode is chosen and again when the flight starts
+    if (tried) return g_cockpit.on;
+    tried = true;
     g_cockpit = Cockpit{};
     // Where the eye sits: right, up and back from the model's origin (its
     // units), looking down by `tilt` degrees; the view's vertical field
-    float right = 0, up = 3, back = 8, tilt = 5, fov = 60;
+    float right = 0, up = 3, back = 8, tilt = 0, fov = 52;
     if (const char* e = getenv("SWT_DOGFIGHT_COCKPIT"))
         if (sscanf(e, "%f,%f,%f,%f,%f", &right, &up, &back, &tilt, &fov) < 1) return false;   // "off"
     const float SCALE = 0.01f;   // the model's centimetres to the game's units (metres, roughly)

@@ -42,11 +42,17 @@ void dogfight_draw_hud(uint32_t* front, int w, int h);
 
 // The cockpit round the camera (dogfight_cockpit.cpp), if the user imported
 // one (tools/import_cockpit.py: models/cockpit/cockpit.mesh and its texture;
-// the game has none of its own). load: once, false if there is none. add: it
+// the game has none of its own). load: read once, false if there is none. add: it
 // and what its screen shows now, into a scene. Where the eye sits in it, in
 // the model's units (centimetres) and degrees:
-//   SWT_DOGFIGHT_COCKPIT=right,up,back,tilt,fov   (default 0,3,8,5,60; "off": no cockpit)
+//   SWT_DOGFIGHT_COCKPIT=right,up,back,tilt,fov   (default 0,3,8,0,52; "off": no cockpit)
+#include <string>
+#include <vector>
 bool dogfight_cockpit_load(const char* dir);
+// Its image files: read and sent to the GPU while the stage loads (a big one
+// takes longer than a frame, and the flight would start with a hitch that
+// the frame interpolation takes seconds to settle from)
+std::vector<std::string> dogfight_cockpit_textures();
 bool dogfight_cockpit_on();
 void dogfight_cockpit_add(R3DNativeScene& scene);
 

@@ -129,8 +129,7 @@ void step(float dt) {
 }  // namespace
 
 void dogfight_reset() {
-    static const bool cockpit = dogfight_cockpit_load("models/cockpit");
-    (void)cockpit;
+    dogfight_cockpit_load("models/cockpit");
     reset();
 }
 void dogfight_step(float dt) { step(dt); }
