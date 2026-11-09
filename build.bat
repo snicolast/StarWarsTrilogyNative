@@ -32,6 +32,8 @@ for %%f in (include\nvsdk_ngx.h include\nvsdk_ngx_defs.h include\nvsdk_ngx_defs_
 if not defined NGX_OK (
     call tools\get_dlss.bat || goto fail
 )
+rem SDL3 and miniz: downloaded once into third_party\downloads, CMake builds from there
+call tools\get_deps.bat || goto fail
 
 rem Visual Studio 2022 or later (Build Tools or any edition) with the C++ tools and
 rem its CMake, and a Windows SDK

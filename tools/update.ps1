@@ -4,8 +4,8 @@
 #
 # What it never touches: anything that is not part of the repository, so the
 # ROM (swtrilgy.zip, data\), save\ (settings, records), build\, out\,
-# StarWarsTrilogy.exe, the DLLs, third_party\ngx\, third_party\menu\ and
-# textures\.
+# StarWarsTrilogy.exe, the DLLs, third_party\ngx\, third_party\downloads\,
+# third_party\menu\ and textures\.
 #
 # A repository file you changed yourself (an edited source file, say) is
 # copied to out\update_backup\<date>\ before it is replaced.
