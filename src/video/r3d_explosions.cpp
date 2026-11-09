@@ -164,7 +164,9 @@ void pick_style(Track& t, Rng& rng) {
     float pick = rng.f();
     t.style = pick < 0.4f ? Track::ROUND : pick < 0.75f ? Track::STRETCHED : Track::CLUSTER;
     t.axis = rng.dir();
-    t.stretch = t.style == Track::STRETCHED ? rng.r(1.5f, 2.1f) : rng.r(1.0f, 1.15f);
+    // Only a little: stretching the quad stretches the fire's grain with it
+    // (a stretched one gets its length from blasts along its axis, burst())
+    t.stretch = t.style == Track::STRETCHED ? rng.r(1.1f, 1.25f) : 1.0f;
     t.scale = t.style == Track::CLUSTER ? rng.r(0.8f, 0.95f) : rng.r(0.9f, 1.15f);
     t.sparks = rng.r(0.6f, 1.5f);
     t.speed = rng.r(0.8f, 1.3f);
@@ -224,6 +226,23 @@ void burst(Track& t, Rng& rng) {
             p.size = R * rng.r(0.4f, 0.6f);
             p.color = t.tint;
             p.seed = hash32(t.seed + 400 + i);
+            t.parts.push_back(p);
+        }
+    }
+    // A stretched one: a blast either way along its axis, almost at once,
+    // so it is long but its fire keeps a round grain
+    if (t.style == Track::STRETCHED) {
+        for (int i = 0; i < 2; i++) {
+            Particle p(FIREBALL);
+            float side = i == 0 ? 1.0f : -1.0f;
+            p.p = t.axis * (side * R * rng.r(0.55f, 0.85f));
+            p.v = p.p * rng.r(0.6f, 1.2f);
+            p.drag = 1.2f;
+            p.age = -rng.r(0.0f, 0.08f);
+            p.life = rng.r(0.6f, 0.8f);
+            p.size = R * rng.r(0.5f, 0.7f);
+            p.color = t.tint;
+            p.seed = hash32(t.seed + 500 + i);
             t.parts.push_back(p);
         }
     }
