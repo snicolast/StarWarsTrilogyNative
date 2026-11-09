@@ -46,7 +46,7 @@ struct FrontendSettings {
     int ray_tracing = 2;   // traced through the world (GPUs with ray tracing): 0 off, 1 sun shadows, 2 also ambient occlusion
     bool shafts = true;    // light shafts from the sun
     bool soft = true;      // soft particles
-    bool explosions = false;   // EXPLOSIONS: ENHANCED (new fireballs, sparks and debris; Yavin)
+    bool explosions = true;    // EXPLOSIONS: ENHANCED (new fireballs, sparks and debris; Yavin)
     bool hdr = true;       // HDR lighting
     bool relief = true;    // surface detail from the textures
     bool sharpen = true;   // contrast adaptive sharpening

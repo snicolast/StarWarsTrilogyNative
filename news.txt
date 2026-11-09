@@ -13,6 +13,11 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[10] 2026-11-09
+- New explosions in Yavin: fireballs that billow and burn out into smoke, sparks, burning debris, and TIE fighters breaking into real pieces of themselves
+- Each explosion looks a little different, and its sound is louder, deeper and comes from where it is on the screen
+- On by default; OPTIONS > GRAPHICS > EXPLOSIONS: ARCADE brings back the original ones
+
 [9] 2026-11-09
 - Flight sticks (Thrustmaster T.Flight HOTAS and the like) now work: the stick is the cabinet's lever, button 1 fires, 2 is the second trigger, 3 EVENT, 4 coin, 5 start
 
