@@ -9,22 +9,20 @@
 
 ## What you get
 
-- **True widescreen** 16:9, not stretched, at any resolution (21:9, 32:9 and 48:9 for three monitors too: OPTIONS > DISPLAY > WIDESCREEN).
-- **Ray-traced sun shadows** and ambient occlusion, plus distance haze, bloom, light shafts and
-  HDR lighting.
+- **True widescreen**, not stretched: 16:9, 21:9, 32:9 or 48:9 for three monitors.
+- **Ray-traced sun shadows** and ambient occlusion, haze, bloom, light shafts and HDR lighting.
 - **New looks, made for this port**:
-  - Space redrawn: a deep star field and the Milky Way that turn with the game, and a cinematic grade.
-  - The Death Star as in the films: a dark night side, a bright edge on its lit limb and thousands
-    of lights in its trenches, which fade into the dark ahead.
-  - Lightsabers, laser bolts and explosions light what is around them; lasers and engines glow.
-  - Vader's suit and helmet shine and reflect the room; Boba Fett's desert has wind ripples and
-    fine sand.
-- **Sharp image**: MSAA or NVIDIA DLAA, HD text.
-- **Smooth motion** at 120 / 144 Hz and above: the 3D is drawn between the game's own frames.
-- **Arcade sound**, the music and voices of the Digital Sound Board included, with surround and headphone modes.
-- **Mouse, gamepad (gyro too) or light gun**, with aim assist on a gamepad and the cabinet's force feedback as rumble.
-- **Quality presets** (Options > Display > Quality) to set the costly effects at once, from laptops to RTX cards.
-- **Achievements and stats** in Records.
+  - New explosions in Yavin: billowing fireballs, sparks, burning debris and TIE fighters breaking
+    into pieces of themselves, with a louder, deeper sound panned to where they are
+    (OPTIONS > GRAPHICS > EXPLOSIONS: ARCADE for the original ones).
+  - Space redrawn with a deep star field and the Milky Way; the Death Star as in the films, with
+    thousands of lights in its trenches.
+  - Lightsabers, lasers and explosions light what is around them; Vader's suit shines; Boba
+    Fett's desert has wind ripples.
+- **Sharp and smooth**: MSAA or NVIDIA DLAA, HD text, and the 3D drawn between the game's frames at 120 / 144 Hz and above.
+- **Arcade sound**, Digital Sound Board music and voices included, with surround and headphone modes.
+- **Mouse, gamepad (gyro too), light gun or flight stick**, with aim assist and force feedback as rumble.
+- **Quality presets** from laptops to RTX cards, and **achievements and stats** in Records.
 
 <table>
   <tr>
@@ -48,25 +46,19 @@ More content will follow in future updates.
 
 ## ⚠️ ROM not included
 
-You need your own copy of the arcade ROM. Nothing from it is in this repository.
-
-Look for **`swtrilgy.zip`**, the *Rev. A* set (Sega Model 3 Step 2.1). Inside you should find
-files like `epr-21379a.17` and `mpr-21339.01`. Other versions of the game will not work.
-
-It must also contain `epr-21119.ic8`, the program of the joystick's force feedback board. Some older
-sets lack it; with one of those the game stops at *FAILED FEEDBACK LEVER INITIALIZE*. `build.bat`
-checks every chip of the zip and says which ones are missing.
+You need your own **`swtrilgy.zip`**, the *Rev. A* set (Sega Model 3 Step 2.1, files like
+`epr-21379a.17`). Nothing from it is in this repository, and other versions will not work.
+It must include `epr-21119.ic8` (the force feedback board), which some older sets lack: without it
+the game stops at *FAILED FEEDBACK LEVER INITIALIZE*. `build.bat` says which chips are missing.
 
 ## Install
 
-You need Windows 10/11 (64-bit) and a GPU with a Vulkan 1.3 driver (most cards and integrated
-graphics from 2016 on, with current drivers).
+You need Windows 10/11 (64-bit) and a GPU with a Vulkan 1.3 driver (most from 2016 on).
 
 1. Download this repository (green **Code** button > **Download ZIP**) and unzip it.
 2. Put `swtrilgy.zip` in the folder.
-3. Double-click `install.bat`. It installs what the build needs with winget, Python 3 and the C++
-   tools of Build Tools for Visual Studio 2022 (a few GB, accept the Windows prompt), then builds
-   the game. It takes a while the first time; you can also drop `swtrilgy.zip` on `install.bat`.
+3. Double-click `install.bat`. It installs Python 3 and the Visual Studio 2022 C++ build tools
+   with winget (a few GB, accept the Windows prompt), then builds the game.
 4. Play with `StarWarsTrilogy.exe`.
 
 On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by contributors).
@@ -93,15 +85,9 @@ It downloads SDL3 and NVIDIA DLSS on the first run.
 
 ### Update
 
-Run `update.bat`. It downloads the latest version from GitHub (no git needed), replaces only the
-files that changed and rebuilds `StarWarsTrilogy.exe`. Your ROM, settings, records and any
-textures of your own are kept; a repository file you edited yourself is copied to
-`out\update_backup\` before it is replaced. `update.bat -Check` only says whether there is
-something new. In a folder cloned with git it runs `git pull` instead.
-
-The game also checks at launch: when there is news of a new version (`news.txt` on GitHub), the main
-menu shows what is new with an **UPDATE NOW** button, which closes the game, runs `update.bat` and
-starts the game again once it is rebuilt. Turn it off in OPTIONS > DISPLAY > CHECK FOR UPDATES.
+When there is a new version, the main menu says what is new and offers **UPDATE NOW**. Or run
+`update.bat` yourself: it downloads the changed files from GitHub (no git needed) and rebuilds.
+Your ROM, settings and records are kept; files you edited are backed up to `out\update_backup\`.
 
 ## Controls
 
@@ -114,21 +100,13 @@ starts the game again once it is rebuilt. Turn it off in OPTIONS > DISPLAY > CHE
 | Coin + start | 5, then 1 | BACK, then START |
 | Pause | Esc | START |
 
-F11 or Alt+Enter toggles fullscreen. C shows an extra crosshair where the mouse points.
-Everything else is in **Options**.
+F11 or Alt+Enter toggles fullscreen. Everything else is in **Options**.
 
-By default the sight goes right where the mouse points. **Options > Controls > Mouse / Light gun**
-can switch the mouse to move the flight lever instead, as on the cabinet. Light guns that Windows
-sees as a mouse (Sinden, Gun4IR and the like) work in the default mode; for a Sinden, keep its
-software running for the white border.
-
-Flight sticks (Thrustmaster T.Flight HOTAS, Logitech Extreme 3D and other joysticks) work as the
-cabinet's yoke: the stick is the lever, so the sight goes where you hold it and back to the centre
-when you let go. Buttons by number: 1 fire, 2 second trigger, 3 EVENT, 4 coin, 5 start / pause; the
-hat moves in the menus. Plug the stick in its PC mode.
-
-If the lightsaber duels feel the wrong way round to you, **Options > Controls > Invert in duels**
-turns the aim round (horizontal, vertical or both) in the duels only; the other stages stay as they are.
+- **Mouse / light gun**: the sight goes where you point (Sinden, Gun4IR and other guns seen as a
+  mouse work as is). OPTIONS > CONTROLS can make the mouse move the flight lever instead.
+- **Flight sticks** (T.Flight HOTAS, Extreme 3D...) are the cabinet's lever: buttons 1 fire,
+  2 second trigger, 3 EVENT, 4 coin, 5 start. Plug the stick in its PC mode.
+- **Invert in duels** (OPTIONS > CONTROLS) turns the aim round in the lightsaber duels only.
 
 ## More
 
