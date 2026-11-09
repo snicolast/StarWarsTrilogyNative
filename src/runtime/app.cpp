@@ -700,6 +700,7 @@ int main(int argc, char** argv) {
     std::mutex prep_mutex;    // one composition and one scene build at a time
     std::mutex ready_mutex;   // ready_newest and ready_pictures
     std::shared_ptr<Prepared> ready_newest;
+    std::shared_ptr<Prepared> ready_before;   // the one made before it
     // New pictures for the GPU slots, in order: handed over when their frame
     // (or a later one) is taken, also those of frames never taken
     struct NewPictures {
@@ -779,7 +780,7 @@ int main(int argc, char** argv) {
             std::lock_guard<std::mutex> lock(ready_mutex);
             ready_pictures.push_back(std::move(pictures));
             p->ready_at = qpc_seconds();
-            if (prep_on) ready_newest = p;
+            if (prep_on) ready_before = ready_newest, ready_newest = p;
         }
     });
     // LW_FRAMELOG: a thread notes when each present reaches the screen
@@ -1146,13 +1147,15 @@ int main(int argc, char** argv) {
             prep_on = interpolating;
             std::lock_guard<std::mutex> lock(ready_mutex);
             ready_newest.reset();
+            ready_before.reset();
         }
         double display = display_clock.tick();
         std::shared_ptr<const R3DFrameState> latest;
-        std::shared_ptr<Prepared> ready;
+        std::shared_ptr<Prepared> ready, before;
         if (interpolating) {
             std::lock_guard<std::mutex> lock(ready_mutex);
             ready = ready_newest;
+            before = ready_before;
         } else {
             std::lock_guard<std::mutex> lock(g_r3d_mutex);
             latest = g_r3d_latest;
@@ -1181,6 +1184,16 @@ int main(int argc, char** argv) {
             was_flying = flying;
             if (settle > 0 && --settle == 0) lateness = late + 0.0015;
             seen = latest;
+        }
+        // The frame to go to after the one shown is the next one, not the
+        // newest: each frame's vertices know where they were one frame before,
+        // so going two frames on in one step shows half the motion and then a
+        // jump. It happens when the picture runs more than a frame behind (a
+        // long scene build, a display that misses a refresh now and then):
+        // DOGFIGHT's ships moved in steps
+        if (ready && before && before != ready && built && before->state->frame > built->frame) {
+            ready = before;
+            latest = ready->state;
         }
         double shown_time = display - lateness - next_period - 0.0005;
         bool take = latest && latest != built && (!interpolating || !built || shown_time >= built->time);

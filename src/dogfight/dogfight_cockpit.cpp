@@ -179,6 +179,24 @@ bool dogfight_cockpit_load(const char* dir) {
                 mesh.verts.push_back(v);
             }
         }
+        // The nearest triangles first: what lies behind them is then not
+        // shaded at all (the dashboard is many layers deep, and at 1440p the
+        // picture no longer kept up with a 120 Hz display)
+        {
+            const size_t count3 = mesh.verts.size() / 3;
+            std::vector<std::pair<float, uint32_t>> order(count3);
+            for (size_t i = 0; i < count3; i++) {
+                float d = 1e30f;
+                for (int k = 0; k < 3; k++) d = std::min(d, dot(at(mesh.verts[i * 3 + k].pos), at(mesh.verts[i * 3 + k].pos)));
+                order[i] = {d, uint32_t(i)};
+            }
+            std::sort(order.begin(), order.end());
+            std::vector<Vertex> sorted;
+            sorted.reserve(mesh.verts.size());
+            for (const auto& o : order)
+                for (int k = 0; k < 3; k++) sorted.push_back(mesh.verts[size_t(o.second) * 3 + k]);
+            mesh.verts.swap(sorted);
+        }
         triangles += mesh.verts.size() / 3;
         if (!mesh.verts.empty()) meshes->push_back(std::move(mesh));
     }

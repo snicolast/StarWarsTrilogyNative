@@ -130,6 +130,26 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
         r3d_hide_wires(out);
         out.sky_dome_hidden = procedural_sky_ && r3d_hide_sky_dome(out);
     }
+    // A native scene under the procedural space: the set's star field is not
+    // drawn (the renderer leaves it out), only looked at above. Its 23000
+    // triangles were near half of the pairing below and of what goes to the
+    // GPU each frame, and DOGFIGHT's frames were ready late for it
+    if (native_ && procedural_sky_ && !out.viewports.empty() && out.viewports.front().stars) {
+        R3DViewport& stars = out.viewports.front();
+        const uint32_t from = stars.opaque_first, n = stars.opaque_count + stars.trans_count;
+        if (stars.trans_first == from + stars.opaque_count && size_t(from) + n <= out.vertices.size() &&
+            keys_.size() == out.vertices.size()) {
+            out.vertices.erase(out.vertices.begin() + from, out.vertices.begin() + from + n);
+            keys_.erase(keys_.begin() + from, keys_.begin() + from + n);
+            for (R3DViewport& v : out.viewports) {
+                if (&v == &stars) continue;
+                if (v.opaque_first >= from + n) v.opaque_first -= n;
+                if (v.trans_first >= from + n) v.trans_first -= n;
+            }
+            stars.opaque_count = stars.trans_count = 0;
+            stars.trans_first = from;
+        }
+    }
     auto t3 = clock::now();
     if (pack_ && texture_ram_ && pack_->active()) apply_texture_pack(out);
     auto t4 = clock::now();
