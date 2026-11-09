@@ -56,28 +56,28 @@ void explosion_boom_mix(float* frames, int count, int channels, float gain, floa
     if (g_voices.empty()) return;
     const float dt = 1.0f / RATE;
     for (Voice& v : g_voices) {
-        float amp = 0.22f * gain * v.strength;
+        float amp = 0.4f * gain * (0.4f + 0.6f * v.strength);
         for (int i = 0; i < count && v.t < LENGTH; i++, v.t += dt) {
             float t = v.t;
             float attack = 1.0f - std::exp(-t * 300.0f);
-            // A sub tone falling from ~75 to ~30 Hz
-            float hz = (30.0f + 45.0f * std::exp(-t * 6.0f)) * v.pitch;
+            // A thump falling from ~120 to ~45 Hz (heard on small speakers too)
+            float hz = (45.0f + 75.0f * std::exp(-t * 7.0f)) * v.pitch;
             v.phase += 6.2831853f * hz * dt;
             if (v.phase > 6.2831853f) v.phase -= 6.2831853f;
-            float sub = std::sin(v.phase) * std::exp(-t * 3.0f) * 0.9f;
+            float sub = std::sin(v.phase) * std::exp(-t * 3.5f) * 0.8f;
             float out[2];
             for (int c = 0; c < 2; c++) {
                 float n = white(v.noise);
-                // The blast: noise darkening from ~600 to ~90 Hz
-                float k = lp(90.0f + 510.0f * std::exp(-t * 7.0f));
+                // The blast: noise darkening from ~1500 to ~150 Hz
+                float k = lp(150.0f + 1350.0f * std::exp(-t * 6.0f));
                 v.body[c] += k * (n - v.body[c]);
                 // Rumble: two poles at ~70 Hz, a long tail
                 v.tail[c] += lp(70.0f) * (n - v.tail[c]);
                 v.tail2[c] += lp(70.0f) * (v.tail[c] - v.tail2[c]);
                 // The crack at the start
                 v.crack[c] += lp(2500.0f) * (n - v.crack[c]);
-                out[c] = sub + v.body[c] * 2.2f * std::exp(-t * 4.5f) + v.tail2[c] * 9.0f * std::exp(-t * 1.6f) +
-                         v.crack[c] * 0.5f * std::exp(-t * 45.0f);
+                out[c] = sub + v.body[c] * 2.6f * std::exp(-t * 3.5f) + v.tail2[c] * 9.0f * std::exp(-t * 1.6f) +
+                         v.crack[c] * 0.8f * std::exp(-t * 30.0f);
                 out[c] *= attack * amp;
             }
             float* f = frames + size_t(i) * size_t(channels);

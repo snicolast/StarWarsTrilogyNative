@@ -157,10 +157,10 @@ void burst(Track& t, Rng& rng) {
         Particle p(SPARK);
         p.v = rng.dir() * (R * rng.r(1.6f, 4.2f));
         p.p = p.v * 0.02f;
-        p.life = rng.r(0.3f, 0.75f);
-        p.size = R * rng.r(0.010f, 0.020f);
+        p.life = rng.r(0.25f, 0.6f);
+        p.size = R * rng.r(0.012f, 0.022f);
         p.drag = 1.6f;
-        p.bright = rng.r(2.5f, 5.0f);
+        p.bright = rng.r(1.5f, 3.0f);
         p.color = rgba(1.0f, rng.r(0.75f, 0.92f), rng.r(0.45f, 0.7f));
         p.seed = hash32(t.seed + i);
         t.parts.push_back(p);
@@ -173,8 +173,8 @@ void burst(Track& t, Rng& rng) {
         p.life = rng.r(1.0f, 1.7f);
         p.size = R * rng.r(0.025f, 0.04f);
         p.drag = 0.5f;
-        p.bright = rng.r(2.0f, 3.0f);
-        p.color = rgba(1.0f, rng.r(0.45f, 0.6f), 0.15f);
+        p.bright = rng.r(1.4f, 2.0f);
+        p.color = rgba(1.0f, rng.r(0.55f, 0.7f), 0.25f);
         p.seed = hash32(t.seed + 100 + i);
         p.puff = rng.r(0.0f, 0.05f);
         t.parts.push_back(p);
@@ -207,8 +207,8 @@ void smoke_cloud(Track& t, Rng& rng) {
         p.size = R * rng.r(0.2f, 0.35f);
         p.grow = 0.5f;
         p.bright = 1;
-        float g = rng.r(0.16f, 0.24f);
-        p.color = rgba(g, g * 0.97f, g * 0.94f, 0.55f);
+        float g = rng.r(0.1f, 0.15f);
+        p.color = rgba(g, g * 0.97f, g * 0.94f, 0.3f);
         p.seed = hash32(t.seed + 300 + i);
         t.parts.push_back(p);
     }
@@ -222,15 +222,15 @@ void simulate(Track& t, Rng& rng, float dt) {
         p.p = p.p + p.v * dt;
         p.angle += p.spin * dt;
         if (p.ember && p.age < p.life * 0.85f && (p.puff -= dt) <= 0) {
-            p.puff += 0.035f;
+            p.puff += 0.06f;
             Particle s(SMOKE);
             s.p = p.p;
             s.v = p.v * 0.08f + rng.dir() * (t.radius * 0.03f);
             s.life = rng.r(0.6f, 1.0f);
             s.size = p.size * rng.r(1.4f, 2.0f);
             s.grow = 2.5f;
-            float g = rng.r(0.2f, 0.28f);
-            s.color = rgba(g, g * 0.96f, g * 0.92f, 0.5f * (1.0f - p.age / p.life));
+            float g = rng.r(0.1f, 0.15f);
+            s.color = rgba(g, g * 0.96f, g * 0.92f, 0.3f * (1.0f - p.age / p.life));
             s.seed = hash32(p.seed + uint32_t(p.age * 1000.0f));
             puffs.push_back(s);
         }
@@ -248,8 +248,8 @@ void simulate(Track& t, Rng& rng, float dt) {
             s.life = rng.r(0.7f, 1.2f);
             s.size = c.size * rng.r(0.35f, 0.55f);
             s.grow = 1.5f;
-            float g = rng.r(0.16f, 0.24f);
-            s.color = rgba(g, g * 0.96f, g * 0.92f, 0.55f * (1.0f - c.age / (c.life * 0.6f)));
+            float g = rng.r(0.1f, 0.15f);
+            s.color = rgba(g, g * 0.96f, g * 0.92f, 0.35f * (1.0f - c.age / (c.life * 0.6f)));
             s.seed = hash32(uint32_t(c.age * 977.0f) + uint32_t(c.verts.size()) * 31u);
             puffs.push_back(s);
         }
@@ -299,7 +299,9 @@ void draw(const Track& t, const Frame& f, std::vector<R3DVertex>& out) {
             V3 tail = c - vel * streak;
             V3 side = normalize(cross(c - tail, c));
             if (length(c - tail) < 1e-6f) side = normalize(cross(V3{0, 1, 0}, c));
-            float w = p.size * (p.ember ? 1.0f : 1.0f - 0.5f * age);
+            // At least about a pixel wide: thinner streaks flicker, and
+            // DLAA's history smears them into long rays
+            float w = std::max(p.size * (p.ember ? 1.0f : 1.0f - 0.5f * age), -c.z * 0.0025f);
             V3 n = normalize(c * -1.0f);
             V3 corner[4] = {tail - side * w, c - side * w, c + side * w, tail + side * w};
             float uv[4][2] = {{0, -1}, {1, -1}, {1, 1}, {0, 1}};
