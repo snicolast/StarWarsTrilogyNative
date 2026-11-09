@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "../audio/explosion_boom.h"
+#include "../audio/explosion_sound.h"
 #include "r3d_screen.h"
 
 namespace {
@@ -416,7 +416,9 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
     // Yavin (top state 3); SWT_EXPLOSIONS_ANYWHERE=1 everywhere the sprite is
     // drawn, replays included (testing)
     static const bool anywhere = getenv("SWT_EXPLOSIONS_ANYWHERE") != nullptr;
-    if (!g_enhanced || !(anywhere || r3d_swt_stage() == 3)) {
+    const bool on = g_enhanced && (anywhere || r3d_swt_stage() == 3);
+    explosion_sound_enable(on);
+    if (!on) {
         g_tracks.clear();
         g_ships.clear();
         g_last_frame = 0;
@@ -536,8 +538,10 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
             Rng rng{t.seed};
             if (e.frame <= 16) {   // seen from the start (not an explosion coming into view)
                 burst(t, rng);
-                // A boom under the game's own sound, as loud as the explosion is big on the screen
-                explosion_boom(std::clamp(e.radius / -e.c.z * 7.0f, 0.3f, 1.0f));
+                // The game's own sound (explosion_sound.h), panned to where it is on the screen
+                const float* p = out.viewports[e.viewport].proj;
+                float ndc = (p[0] * e.c.x + p[8] * e.c.z + p[12]) / -e.c.z;
+                explosion_sound_event(std::clamp(ndc * 0.8f, -0.8f, 0.8f));
                 // LW_SNDLOG (with the sound board's out/voices.csv): when each began
                 static FILE* log = getenv("LW_SNDLOG") ? fopen("out/explosions.csv", "w") : nullptr;
                 if (log) {

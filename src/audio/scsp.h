@@ -26,6 +26,9 @@ public:
     static void set_cubic(bool on) { cubic_ = on; }
     // Key-ons on stopped slots that the Supermodel rule would have ignored (diagnostics)
     static uint32_t restarted() { return restarted_; }
+    // EXPLOSIONS: ENHANCED (explosion_sound.h): once per frame, gives the
+    // explosions keyed on lately the screen positions the renderer reported
+    static void explosion_frame();
 
     void midi_in(uint8_t b);
     bool midi_pending() const { return midi_r_ != midi_w_; }

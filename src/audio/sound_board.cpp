@@ -1,6 +1,5 @@
 #include "sound_board.h"
 
-#include "explosion_boom.h"
 
 #include <algorithm>
 #include <chrono>
@@ -183,6 +182,7 @@ void SoundBoard::write16(uint32_t a, uint16_t v) {
 
 void SoundBoard::run_frame(double frame_hz) {
     if (!ready_) return;
+    Scsp::explosion_frame();   // EXPLOSIONS: ENHANCED: where on the screen the new ones are
     sample_acc_ += 44100.0 / frame_hz;
     int samples = int(sample_acc_);
     sample_acc_ -= samples;
@@ -204,8 +204,6 @@ void SoundBoard::run_frame(double frame_hz) {
     auto t_dsb = std::chrono::steady_clock::now();
     // The DSB2's music, on the front pair (it gets the same commands)
     if (dsb_.ready()) dsb_.run(samples, buffer_.data(), AudioStream::kInChannels, music_gain_ / 32768.0f);
-    // EXPLOSIONS: ENHANCED: a boom under the game's explosions (explosion_boom.h)
-    explosion_boom_mix(buffer_.data(), samples, AudioStream::kInChannels, gain_ / 5.0f, rear_gain_);
     auto t_end = std::chrono::steady_clock::now();
     last_scsp_ms_ = std::chrono::duration<double, std::milli>(t_dsb - t_scsp).count();
     last_dsb_ms_ = std::chrono::duration<double, std::milli>(t_end - t_dsb).count();

@@ -1,5 +1,7 @@
 #include "scsp.h"
 
+#include "explosion_sound.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -117,6 +119,42 @@ int32_t unpack(uint16_t w) {
 }
 
 }  // namespace
+
+// ---- EXPLOSIONS: ENHANCED (explosion_sound.h) ----
+// Per chip and slot, outside the chip state (game states keep their size)
+namespace {
+struct ExplosionSlot {
+    bool on = false;      // playing one of the explosion sounds
+    bool placed = false;  // pan known (or given up on: the game's own)
+    int age = 0;          // frames since key-on
+    float pan = 0;        // -1 left .. 1 right
+    float low = 0;        // one-pole low-pass state, for the low boost
+};
+ExplosionSlot g_expl[2][32];
+// +12 dB on the direct level, and half the TL (the game's distance
+// attenuation, up to 17.6 dB) so far ones are still heard over the gunfire
+constexpr int kExplosionDisdl = 2;
+// Low shelf: +6 dB below about 150 Hz
+constexpr float kExplosionLowK = 0.0211f, kExplosionLowGain = 1.0f;
+constexpr int kExplosionPlaceFrames = 18;   // ~0.3 s for the renderer to report it
+}  // namespace
+
+void Scsp::explosion_frame() {
+    for (;;) {   // the oldest unplaced explosion takes the oldest report
+        ExplosionSlot* best = nullptr;
+        for (auto& chip : g_expl)
+            for (ExplosionSlot& e : chip)
+                if (e.on && !e.placed && (!best || e.age > best->age)) best = &e;
+        if (!best) break;
+        float pan;
+        if (!explosion_sound_take(pan)) break;
+        best->pan = pan;
+        best->placed = true;
+    }
+    for (auto& chip : g_expl)
+        for (ExplosionSlot& e : chip)
+            if (e.on && !e.placed && ++e.age > kExplosionPlaceFrames) e.placed = true, e.pan = 2;   // 2: the game's pan
+}
 
 // ---- LW_SNDLOG: how each sound is played (to find why one is too quiet) ----
 // out/voices.csv: one line per note (registers at key-on, length, loudest
@@ -411,6 +449,9 @@ void Scsp::start_slot(int s) {
     sl.level = 0x17F << 16;
     sl.state = ATTACK;
     update_lfo(s);
+    ExplosionSlot& ex = g_expl[master_ ? 0 : 1][s];
+    ex = ExplosionSlot{};
+    ex.on = explosion_sound_enabled() && explosion_sound_is_sample(ram_, ram_mask_, sl.base);
     if (sndlog()) {
         int chip = master_ ? 0 : 1;
         log_voice_end(chip, s, common_[C_MVOL]);
@@ -688,7 +729,23 @@ void Scsp::render(float& left, float& right) {
         int tl = w6 & 0xFF;
         int disdl = (w11 >> 13) & 7, dipan = (w11 >> 8) & 0x1F;
         int imxl = w10 & 7;
-        if (disdl) {
+        ExplosionSlot& ex = g_expl[master_ ? 0 : 1][s];
+        if (ex.on && disdl) {   // EXPLOSIONS: ENHANCED
+            ex.low += kExplosionLowK * (float(sample) - ex.low);
+            float x = float(sample) + kExplosionLowGain * ex.low;
+            int etl = tl / 2, edl = std::min(disdl + kExplosionDisdl, 7);
+            float gl, gr;
+            if (ex.placed && ex.pan <= 1) {
+                float g = float(t.pan4l[etl][0][edl]) * (1.0f / 4096.0f);
+                gl = g * std::sqrt(1.0f - ex.pan);
+                gr = g * std::sqrt(1.0f + ex.pan);
+            } else {
+                gl = float(t.pan4l[etl][dipan][edl]) * (1.0f / 4096.0f);
+                gr = float(t.pan4r[etl][dipan][edl]) * (1.0f / 4096.0f);
+            }
+            l += int32_t(x * gl);
+            r += int32_t(x * gr);
+        } else if (disdl) {
             int64_t direct = disdl >= 4 && imxl ? int64_t(sample) * kEffectBoost >> 12 : sample;
             l += int32_t((direct * t.pan4l[tl][dipan][disdl]) >> 12);
             r += int32_t((direct * t.pan4r[tl][dipan][disdl]) >> 12);
