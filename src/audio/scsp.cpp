@@ -129,6 +129,7 @@ struct VoiceLog {
     uint64_t start = 0;
     int32_t peak_raw = 0, peak_out = 0, peak_send = 0;
     uint16_t regs[16] = {};
+    uint32_t hash = 0;   // of the first 256 bytes of the sample at key-on (which sound it is)
 };
 struct ChipLog {
     uint64_t clock = 0;
@@ -152,7 +153,7 @@ bool sndlog() {
             g_stems = fopen("out/stems.raw", "wb");
             if (g_voices)
                 fprintf(g_voices, "t;dur;chip;slot;sa;lsa;lea;pcm8;lpctl;ssctl;oct;fns;tl;disdl;dipan;imxl;isel;efsdl;sdir;"
-                                  "plfos;alfos;mdl;ar;d1r;d2r;rr;dl;mvol;peak_sample;peak_direct;peak_effect\n");
+                                  "plfos;alfos;mdl;ar;d1r;d2r;rr;dl;mvol;peak_sample;peak_direct;peak_effect;hash\n");
             if (g_mix) fprintf(g_mix, "t;chip;direct_rms;direct_peak;effect_rms;effect_peak;max_voices\n");
         }
     }
@@ -165,13 +166,13 @@ void log_voice_end(int chip, int s, uint16_t mvol) {
     if (!v.on) return;
     v.on = false;
     const uint16_t* r = v.regs;
-    fprintf(g_voices, "%.3f;%.3f;%d;%d;%05X;%04X;%04X;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d\n",
+    fprintf(g_voices, "%.3f;%.3f;%d;%d;%05X;%04X;%04X;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%08X\n",
             double(v.start) / 44100.0, double(c.clock - v.start) / 44100.0, chip, s,
             unsigned((r[0] & 0xF) << 16 | r[1]), r[2], r[3], (r[0] >> 4) & 1, (r[0] >> 5) & 3, (r[0] >> 7) & 3,
             (((r[8] >> 11) & 0xF) ^ 8) - 8, r[8] & 0x3FF, r[6] & 0xFF, (r[11] >> 13) & 7, (r[11] >> 8) & 0x1F, r[10] & 7,
             (r[10] >> 3) & 0xF, s < 16 ? (r[11] >> 5) & 7 : -1, (r[6] >> 8) & 1, (r[9] >> 5) & 7, r[9] & 7,
             (r[7] >> 12) & 0xF, r[4] & 0x1F, (r[4] >> 6) & 0x1F, (r[4] >> 11) & 0x1F, r[5] & 0x1F, (r[5] >> 5) & 0x1F,
-            mvol & 0xF, v.peak_raw, v.peak_out, v.peak_send);
+            mvol & 0xF, v.peak_raw, v.peak_out, v.peak_send, unsigned(v.hash));
 }
 }  // namespace
 
@@ -418,6 +419,9 @@ void Scsp::start_slot(int s) {
         v.on = true;
         v.start = g_chip_log[chip].clock;
         std::copy_n(slot_regs_[s], 16, v.regs);
+        uint32_t h = 2166136261u;
+        for (uint32_t i = 0; i < 256; i++) h = (h ^ ram_[(sl.base + i) & ram_mask_]) * 16777619u;
+        v.hash = h;
     }
 }
 
