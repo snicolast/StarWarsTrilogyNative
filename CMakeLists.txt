@@ -73,6 +73,22 @@ add_custom_target(shaders DEPENDS ${SHADER_HEADERS})
 # macOS the window, the mouse and keyboard and the sound too): downloaded once
 # at configure time and linked statically
 include(FetchContent)
+# SDL3 and miniz (third_party/deps.txt: file, URL, SHA256). build.bat downloads
+# them first into third_party/downloads (tools/get_deps.bat, with retries); a
+# copy there is used instead of the URL, so a file saved there by hand works too
+function(swt_dep name)
+    file(STRINGS ${CMAKE_SOURCE_DIR}/third_party/deps.txt line REGEX "^${name} ")
+    string(STRIP "${line}" line)
+    string(REGEX REPLACE "[ \t]+" ";" line "${line}")
+    list(GET line 1 file)
+    list(GET line 2 url)
+    list(GET line 3 hash)
+    if(EXISTS ${CMAKE_SOURCE_DIR}/third_party/downloads/${file})
+        set(url ${CMAKE_SOURCE_DIR}/third_party/downloads/${file})
+    endif()
+    set(${name}_URL ${url} PARENT_SCOPE)
+    set(${name}_HASH SHA256=${hash} PARENT_SCOPE)
+endfunction()
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -86,18 +102,20 @@ endif()
 foreach(sub ${SDL_UNUSED})
     set(SDL_${sub} OFF CACHE BOOL "" FORCE)
 endforeach()
+swt_dep(SDL3)
 FetchContent_Declare(SDL3
-    URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
-    URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
+    URL ${SDL3_URL}
+    URL_HASH ${SDL3_HASH}
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     EXCLUDE_FROM_ALL)
 FetchContent_MakeAvailable(SDL3)
 
 # miniz, to read swtrilgy.zip directly (rom_zip.cpp): downloaded once at
 # configure time like SDL3
+swt_dep(miniz)
 FetchContent_Declare(miniz
-    URL https://github.com/richgel999/miniz/releases/download/3.0.2/miniz-3.0.2.zip
-    URL_HASH SHA256=ada38db0b703a56d3dd6d57bf84a9c5d664921d870d8fea4db153979fb5332c5
+    URL ${miniz_URL}
+    URL_HASH ${miniz_HASH}
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(miniz)   # the release zip has no CMake project: just the two files
 set(MINIZ_DIR ${miniz_SOURCE_DIR})
