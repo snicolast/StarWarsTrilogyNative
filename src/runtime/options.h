@@ -45,6 +45,7 @@ struct Options {
     int ray_tracing = 2;             // --rt off|shadows|ao (--no-rt): traced sun shadows (1) and ambient occlusion (2)
     bool sun = true;                 // --no-sun: no sun in the procedural sky
     bool show_crosshair = true;      // menu option; the C key toggles it
+    bool explosions = true;          // --explosions arcade|enhanced: Star Wars Trilogy's new fireballs, sparks and debris (Yavin)
     // Sound
     float volume = 5.0f;             // --volume: output gain
     float music = 5.0f;              // --music: the music board's gain

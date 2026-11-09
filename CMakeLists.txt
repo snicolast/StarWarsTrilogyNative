@@ -180,6 +180,7 @@ add_executable(StarWarsTrilogy
     src/video/r3d_state.cpp
     src/video/r3d_scene.cpp
     src/video/r3d_screen.cpp
+    src/video/r3d_explosions.cpp
     src/video/r3d_world.cpp
     src/video/r3d_renderer.cpp
     src/video/r3d_raytrace.cpp
@@ -190,6 +191,7 @@ add_executable(StarWarsTrilogy
     src/audio/scsp.cpp
     src/audio/sound_board.cpp
     src/audio/dsb2.cpp
+    src/audio/explosion_sound.cpp
     ${MUSASHI_DIR}/m68kdasm.c
     ${MUSASHI_GEN}/m68kops.c
     ${GEN_SOURCES}

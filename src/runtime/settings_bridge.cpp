@@ -40,6 +40,7 @@ void options_from_settings(Options& o, const FrontendSettings& ini) {
     o.ray_tracing = ini.ray_tracing;
     o.shafts = ini.shafts;
     o.soft = ini.soft;
+    o.explosions = ini.explosions;
     o.hdr = ini.hdr;
     o.relief = ini.relief;
     o.sharpen = ini.sharpen;
@@ -73,6 +74,7 @@ void settings_from_options(FrontendSettings& s, const Options& o) {
     s.ray_tracing = o.ray_tracing;
     s.shafts = o.shafts;
     s.soft = o.soft;
+    s.explosions = o.explosions;
     s.hdr = o.hdr;
     s.relief = o.relief;
     s.sharpen = o.sharpen;

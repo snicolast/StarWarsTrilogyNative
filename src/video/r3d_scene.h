@@ -46,6 +46,7 @@ enum : uint32_t {
     R3D_HUD_LEFT = 1 << 14,    // widescreen: HUD element moved to the left edge
     R3D_HUD_RIGHT = 1 << 15,   // ... or to the right edge
     R3D_WORLD = 1 << 16,       // part of the game world (the atmosphere applies)
+    R3D_EXPLOSION = 1 << 17,   // Star Wars Trilogy, EXPLOSIONS: ENHANCED: drawn by r3d.frag's explosion() (r3d_explosions.cpp)
     R3D_ACTOR = 1 << 18,
     R3D_HUD_LOWER = 1 << 21,   // with R3D_HUD_RIGHT: also 24 rows lower (Star Wars Trilogy's shield gauge)
     R3D_NO_SHADOW = 1 << 20,   // receives no sun shadows (the planets and the Death Star: the ships before them are not near)

@@ -91,6 +91,8 @@ const std::vector<Entry>& table() {
                }),
         custom("--no-rt", nullptr, "no ray tracing (as --rt off)", false, [](Options& o, const char*) { o.ray_tracing = 0; }),
         off("--no-shafts", &Options::shafts, "no sun shafts"),
+        custom("--explosions", "arcade|enhanced", "the arcade's explosions, or new ones with sparks and debris (enhanced, the default; Yavin)", false,
+               [](Options& o, const char* v) { o.explosions = strcmp(v, "enhanced") == 0; }),
         off("--no-soft", &Options::soft, "hard edges where translucent effects meet the geometry"),
         off("--no-hdr", &Options::hdr, "clipped lighting like the original"),
         off("--no-relief", &Options::relief, "flat textures, no relief"),

@@ -284,6 +284,93 @@ vec2 spotlight() {
     return vec2(range, z >= atm.spot_color.w ? 1.0 : 0.0) * ellipse;
 }
 
+// EXPLOSIONS: ENHANCED (r3d_explosions.cpp, not in the original): the game's
+// explosion sprite becomes a fireball of billowing noise, white hot at first,
+// then orange, red and soot that breaks up into wisps; each explosion also throws sparks (streaks), burning pieces trailing
+// puffs of smoke and tumbling pieces of hull lit by the sun. tex: kind in
+// bits 0-1, a seed in bits 8-23; params.x: age 0..1; params.z: the
+// fireball's radius, a spark's brightness, a puff's size, a piece's heat
+float expl_fbm(vec3 p) {
+    float s = 0.0, a = 0.5;
+    for (int i = 0; i < 4; i++) {
+        s += a * atm_noise(p);
+        p = p * 2.07 + vec3(1.7, 9.2, 3.1);
+        a *= 0.5;
+    }
+    return s / 0.9375;
+}
+
+// Fire by its heat: 0 soot, then deep red, orange, yellow, 1 white hot
+vec3 expl_fire(float h) {
+    vec3 c = mix(vec3(0.05, 0.04, 0.035), vec3(0.55, 0.07, 0.015), smoothstep(0.0, 0.3, h));
+    c = mix(c, vec3(1.0, 0.38, 0.06), smoothstep(0.25, 0.55, h));
+    c = mix(c, vec3(1.0, 0.78, 0.32), smoothstep(0.5, 0.8, h));
+    return mix(c, vec3(1.0, 0.97, 0.9), smoothstep(0.78, 1.0, h));
+}
+
+vec4 explosion(out float glow_k) {
+    uint kind = tex & 3u;
+    float seed = float((tex >> 8) & 0xFFFFu) / 65535.0;
+    float t = params.x;
+    vec2 q = uv;
+    vec4 c = vec4(0.0);
+    glow_k = 1.0;
+    if (kind == 0u) {   // the fireball; |q| = 1 is the sprite's radius
+        float grow = 1.0 - pow(1.0 - clamp(t * 2.8, 0.0, 1.0), 3.0);
+        float rad = mix(0.3, 0.95, grow) + 0.12 * t;
+        float d = length(q) / rad;
+        vec3 sp = vec3(q / rad, sqrt(max(1.0 - d * d, 0.0)));   // as if on a ball
+        vec3 off = vec3(37.0, 11.0, 23.0) * seed;
+        float n = expl_fbm(sp * 1.7 - normalize(sp + vec3(0.0, 0.0, 1e-3)) * t * 2.0 + off);   // billows rolling out
+        float n2 = expl_fbm(sp * 5.5 + off.zxy + vec3(0.0, 0.0, t * 1.5));
+        float shape = 1.0 - d + (n - 0.5) * 1.4 + (n2 - 0.5) * 0.4;
+        float density = smoothstep(0.0, 0.3, shape);
+        float cool = smoothstep(0.08, 0.8, t);
+        float heat = clamp((shape * 1.1 + (n2 - 0.5) * 0.9) * (1.0 - cool) * 1.25 + (1.0 - cool) * 0.1, 0.0, 1.0);
+        vec3 fire = expl_fire(heat) * (0.8 + 4.0 * heat * heat * heat);
+        // soot that breaks up into wisps as it thins out (not one round veil)
+        float ns = expl_fbm(sp * vec3(3.0, 3.0, 1.5) + off * 1.3 + vec3(0.0, t * 0.9, t * 0.4));
+        vec3 soot = vec3(0.07, 0.065, 0.06) * (0.4 + 1.4 * ns) + expl_fire(heat) * 0.15;
+        float hot = smoothstep(0.12, 0.4, heat);
+        c.rgb = mix(soot, fire, hot);
+        float diss = -0.15 + smoothstep(0.2, 0.95, t);
+        float wisp = smoothstep(diss, diss + 0.18, ns * 1.15 - 0.1 + (1.0 - d) * 0.2);
+        float sa = 0.75 * wisp * (1.0 - smoothstep(0.75, 1.0, t));
+        c.a = density * mix(sa, 1.0, hot);
+        // the first flash: a white-hot core, ragged like the rest
+        float flash = (1.0 - smoothstep(0.0, 0.12, t)) * exp(-dot(q, q) * 5.0) * (0.7 + 0.6 * n);
+        c.rgb += vec3(1.0, 0.95, 0.85) * flash * 8.0;
+        c.a = max(c.a, clamp(flash * 1.5, 0.0, 1.0));
+        c.rgb *= color.rgb;   // its tint (white = none)
+    } else if (kind == 1u) {   // a spark: a streak, its head (x = 1) brightest
+        float across = 1.0 - q.y * q.y;
+        float along = smoothstep(0.0, 1.0, q.x);
+        c.rgb = color.rgb * params.z * (0.5 + 0.5 * along) * mix(1.0, 0.6, t);
+        c.a = across * across * along * (1.0 - smoothstep(0.5, 1.0, t));
+    } else if (kind == 2u) {   // a puff of smoke: ragged, thinning into wisps
+        float n = expl_fbm(vec3(q * 1.6, seed * 40.0 + t * 0.8));
+        float n2 = expl_fbm(vec3(q * 3.5 + 7.0, seed * 13.0 + t * 0.5));
+        float a = 1.0 - smoothstep(0.2, 1.0, length(q) + (n - 0.5) * 0.9);
+        a *= smoothstep(0.6 * t, 0.6 * t + 0.25, n2);
+        c.rgb = color.rgb * mix(0.7, 1.2, n2) * clamp(vp.params.x + 0.3 * vp.sun.w, 0.4, 1.2);
+        c.a = a * color.a * smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.5, 1.0, t));
+        glow_k = 0.0;
+    } else {   // a piece of hull: lit by the sun, red hot at first
+        vec3 n = normalize(normal);
+        if (dot(n, view_pos) > 0.0) n = -n;
+        vec3 l = length(vp.sun.xyz) > 0.0 ? normalize(vp.sun.xyz) : vec3(0.0, 1.0, 0.0);
+        float s = max(dot(l, n), 0.0) * vp.sun.w + 0.5 * vp.params.x;
+        c.rgb = color.rgb * min(s, 1.4);
+        vec3 h = normalize(l + normalize(-view_pos));
+        c.rgb += vec3(pow(max(dot(n, h), 0.0), 24.0) * vp.sun.w * 0.6);
+        float heat = params.z;
+        c.rgb += expl_fire(0.35 + 0.5 * heat) * heat * heat * 3.0 * (0.6 + 0.4 * atm_noise(vec3(q * 3.0, seed * 30.0)));
+        c.a = 1.0 - smoothstep(0.75, 1.0, t);
+        glow_k = heat;
+    }
+    return c;
+}
+
 void main() {
     vec2 duv_dx = dFdx(uv), duv_dy = dFdy(uv);
     vec3 dpx = dFdx(view_pos), dpy = dFdy(view_pos);   // the surface's frame, for the surface detail
@@ -294,6 +381,25 @@ void main() {
     out_motion = (clip_before.xy / clip_before.w - ndc) * px_per_ndc;
     gl_SampleMask[0] = -1;   // a statically written mask must be set on every path
     vec4 col = color;
+    if ((flags & EXPLOSION) != 0u) {   // only in the translucent pass
+        if (vp.quality.x <= -1000.0 || vp.quality.x > 0.0 || vp.fog_color.w < 0.0) discard;
+        float glow_k;
+        vec4 c = explosion(glow_k);
+        uint kind = tex & 3u;
+        if (atm.soft.x > 0.0) {   // soft where it meets the hulls behind, over its size
+            float d = texelFetch(scene_depth, ivec2(gl_FragCoord.xy), 0).r;
+            float soft = kind == 0u || kind == 2u ? max(atm.soft.y, params.z * 0.4) : atm.soft.y;
+            if (d > 0.0) c.a *= clamp((view_pos.z + 1e-3 / d) / soft, 0.0, 1.0);
+        }
+        if (c.a < 1.0 / 255.0) discard;
+        c.rgb = min(c.rgb, vec3(atm.soft.z > 0.5 ? 8.0 : 1.0));
+        float fog = params.y * clamp(vp.params.z + (-view_pos.z) * vp.params.y, 0.0, 1.0);
+        c.rgb = mix(c.rgb, vp.fog_color.rgb * vp.fog_color.a, fog);
+        out_color = c;
+        float peak = max(c.r, max(c.g, c.b));
+        out_glow = vec4(c.rgb * smoothstep(0.6, 1.0, peak) * glow_k, c.a);
+        return;
+    }
     if ((flags & TRANSLATOR) != 0u) col.rgb *= 16.0;
 
     // Sun shadow pass (fog_color.w < 0): only what stands near the ground casts

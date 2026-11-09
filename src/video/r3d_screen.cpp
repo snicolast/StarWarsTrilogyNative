@@ -226,6 +226,7 @@ void r3d_widen_screen_fills(R3DScene& out, float wide) {
 
 void r3d_set_swt_duel(bool on) { g_duel = on; }
 void r3d_set_swt_stage(int top_state) { g_stage = top_state; }
+int r3d_swt_stage() { return g_stage; }
 
 void r3d_anchor_swt_hud(R3DScene& out) {
     if (out.viewports.empty()) return;

@@ -46,6 +46,7 @@ struct FrontendSettings {
     int ray_tracing = 2;   // traced through the world (GPUs with ray tracing): 0 off, 1 sun shadows, 2 also ambient occlusion
     bool shafts = true;    // light shafts from the sun
     bool soft = true;      // soft particles
+    bool explosions = true;    // EXPLOSIONS: ENHANCED (new fireballs, sparks and debris; Yavin)
     bool hdr = true;       // HDR lighting
     bool relief = true;    // surface detail from the textures
     bool sharpen = true;   // contrast adaptive sharpening
@@ -140,7 +141,7 @@ private:
         RECORDS, DEBUG, DEBUG_STAGE, DEBUG_PHASE, MORE_GAMES, LOST_WORLD,
         OPT_QUALITY, OPT_DISPLAY, OPT_VOLUME, OPT_MUSIC, OPT_SPEAKERS, OPT_REAR, OPT_SAMPLES, OPT_AA, OPT_HAZE, OPT_BLOOM, OPT_AO, OPT_SKY, OPT_SUN, OPT_SHADOWS, OPT_SHAFTS, OPT_SOFT, OPT_HDR, OPT_RELIEF, OPT_SHARPEN, OPT_TEXT, OPT_CROSS, OPT_MICE,
         OPT_SAT, OPT_GAMMA, OPT_MOTION, OPT_PAD_SPEED, OPT_GYRO, OPT_GYRO_SPEED, OPT_VIBRATION, OPT_ASSIST, OPT_RT, OPT_MENU_MUSIC, EXTRA, DOGFIGHT, OPT_POINTER, OPT_SIGHT, OPT_PAD_AIM, OPT_PAD_INVERT, OPT_DUEL_INVERT, OPT_UPDATES, OPT_SCALE,
-        OPT_ASPECT,
+        OPT_ASPECT, OPT_EXPLOSIONS,
     };
     struct Item {
         Id id;

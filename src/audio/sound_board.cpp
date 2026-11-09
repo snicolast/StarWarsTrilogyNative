@@ -1,5 +1,6 @@
 #include "sound_board.h"
 
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -181,6 +182,7 @@ void SoundBoard::write16(uint32_t a, uint16_t v) {
 
 void SoundBoard::run_frame(double frame_hz) {
     if (!ready_) return;
+    Scsp::explosion_frame();   // EXPLOSIONS: ENHANCED: where on the screen the new ones are
     sample_acc_ += 44100.0 / frame_hz;
     int samples = int(sample_acc_);
     sample_acc_ -= samples;
