@@ -2,6 +2,7 @@
 
 #include <chrono>
 
+#include "r3d_catalog.h"
 #include "r3d_explosions.h"
 #include "r3d_screen.h"
 
@@ -97,6 +98,7 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     out.polygons = 0;
     visited_viewports_.clear();
     viewport_instances_.clear();
+    node_stack_.clear();
     using clock = std::chrono::steady_clock;
     auto ms = [](clock::time_point a, clock::time_point b) { return std::chrono::duration<float, std::milli>(b - a).count(); };
     auto t0 = clock::now();
@@ -131,6 +133,7 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     link_previous(out);
     if (share_world_) r3d_swt_explosions(out, viewport_instances_);   // adds vertices: after the pairing
     auto t5 = clock::now();
+    if (r3d_catalog_on()) r3d_catalog_frame(state.frame);
     stage_ms_[0] = ms(t0, t1), stage_ms_[1] = ms(t1, t2), stage_ms_[2] = ms(t2, t3), stage_ms_[3] = ms(t3, t4), stage_ms_[4] = ms(t4, t5);
 }
 
@@ -381,6 +384,7 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
     if (!(w0 & 0x20)) {
         R3DViewport v;
         v.priority = (w0 >> 3) & 3;
+        viewport_priority_ = v.priority;
         v.node = addr;
         for (int i = 0; i < 12; i++) v.frustum[i] = vp(0x08 + uint32_t(i));
         v.w = float(vp(0x14) & 0xFFFF) / 4.0f;
@@ -536,6 +540,12 @@ void R3DSceneBuilder::node(uint32_t addr, const Mat& parent, Attribs a, int dept
         ~KeyScope() { key = saved; }
     } key_scope{node_key_, node_key_};
     node_key_ = r3d_mix_key(node_key_, addr);
+    // The nodes above the models drawn from here (the model catalogue)
+    struct ParentScope {
+        std::vector<uint32_t>& stack;
+        ~ParentScope() { stack.pop_back(); }
+    } parent_scope{node_stack_};
+    node_stack_.push_back(addr);
 
     if (w[0] & 0x04)
         color_table_ = ((w[3] >> 19) | ((w[7] >> 28) << 13) | ((w[8] >> 25) << 17)) & 0x0FFFFF;
@@ -822,5 +832,22 @@ void R3DSceneBuilder::model(uint32_t addr, const Mat& m, const Attribs& a) {
         in.path = path;
         in.start = start_addr;
         instances_.push_back(in);
+        if (r3d_catalog_on()) {
+            uint32_t parents[4];
+            R3DCatalogModel c;
+            c.model = start_addr;
+            c.polygons = drawn;
+            c.priority = viewport_priority_;
+            c.viewport = viewport_key_;
+            c.tex_x = a.tex_x, c.tex_y = a.tex_y, c.page = a.page;
+            c.model_scale = a.model_scale;
+            c.matrix_scale = std::sqrt(m.m[0] * m.m[0] + m.m[1] * m.m[1] + m.m[2] * m.m[2]);
+            for (int i = 0; i < 3; i++) c.origin[i] = m.m[12 + i];
+            for (; c.parent_count < 4 && c.parent_count < int(node_stack_.size()); c.parent_count++)
+                parents[c.parent_count] = node_stack_[node_stack_.size() - 1 - c.parent_count];
+            c.parents = parents;
+            r3d_catalog_add(c, opaque_.data() + opaque_from, uint32_t(opaque_.size()) - opaque_from, trans_.data() + trans_from,
+                            uint32_t(trans_.size()) - trans_from, out_->frame);
+        }
     }
 }

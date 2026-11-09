@@ -224,6 +224,8 @@ private:
     std::unordered_set<uint32_t> spinning_;   // instances that turned a lot since the previous frame
     std::unordered_map<uint32_t, uint32_t> instance_count_;
     uint32_t node_key_ = 0, viewport_key_ = 0;
+    std::vector<uint32_t> node_stack_;   // the nodes above the one being walked (model catalogue, r3d_catalog.h)
+    int viewport_priority_ = 0;
     bool hud_edges_ = true;
     bool share_world_ = false;
     bool procedural_sky_ = false;

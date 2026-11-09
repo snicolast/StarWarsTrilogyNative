@@ -198,6 +198,7 @@ add_executable(StarWarsTrilogy
     src/video/r3d_state.cpp
     src/video/r3d_scene.cpp
     src/video/r3d_screen.cpp
+    src/video/r3d_catalog.cpp
     src/video/r3d_explosions.cpp
     src/video/r3d_world.cpp
     src/video/r3d_renderer.cpp

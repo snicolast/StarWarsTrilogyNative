@@ -41,6 +41,7 @@
 #include "../ui/achievement_toast.h"
 #include "../ui/frontend.h"
 #include "../ui/menu_music.h"
+#include "../video/r3d_catalog.h"
 #include "../video/pack2d.h"
 #include "../video/r3d_explosions.h"
 #include "../video/r3d_renderer.h"
@@ -1371,6 +1372,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 100 && !g_parked; i++) Sleep(10);   // a frame takes ~17 ms; 1 s is plenty
     g_audio.stop();
     stats_save();
+    if (r3d_catalog_on()) r3d_catalog_write();   // SWT_MODEL_CATALOG: out/model_catalog.txt
     fflush(stdout);
     ui.shutdown();
     if (toast_shown) toast_layer.shutdown();
