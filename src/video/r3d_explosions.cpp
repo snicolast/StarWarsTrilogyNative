@@ -246,7 +246,7 @@ void simulate(Track& t, Rng& rng, float dt) {
             s.p = c.p + rng.dir() * (c.size * 0.3f);
             s.v = c.v * 0.05f;
             s.life = rng.r(0.7f, 1.2f);
-            s.size = c.size * rng.r(0.35f, 0.55f);
+            s.size = std::min(c.size, t.radius * 0.4f) * rng.r(0.35f, 0.55f);
             s.grow = 1.5f;
             float g = rng.r(0.1f, 0.15f);
             s.color = rgba(g, g * 0.96f, g * 0.92f, 0.35f * (1.0f - c.age / (c.life * 0.6f)));
@@ -374,6 +374,7 @@ void break_ship(Track& t, const Ship& ship, Rng& rng) {
                 v.color = (col & 0xFF000000u) | uint32_t(r) | uint32_t(g) << 8 | uint32_t(b) << 16;
                 c.verts.push_back(v);
             }
+        if (size > 3.0f * t.radius) continue;   // not a fighter's piece
         c.p = centre;
         V3 out = length(centre) > 1e-4f ? normalize(centre) : rng.dir();
         c.v = normalize(out + rng.dir() * 0.35f) * (t.radius * rng.r(0.35f, 0.9f));
@@ -479,19 +480,32 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
             if (to <= from || to - from > 9000 || to > out.vertices.size() || o.z > -1e-3f) continue;
             int fr;
             if (explosion_frame(out.vertices[from].tex, fr)) continue;
+            // Its hull only: the luminous polygons are the laser bolts it has
+            // fired (drawn with the ship, long red streaks once tumbling) and
+            // the glow of its engines
             float r = 0;
-            for (uint32_t k = from; k < to; k++) r = std::max(r, length(load(out.vertices[k].pos) - o));
-            if (r > 0.3f * -o.z) continue;   // the Death Star, the capital ships near the eye
+            size_t hull = 0;
+            for (uint32_t k = from; k + 2 < to; k += 3) {
+                if (out.vertices[k].flags & R3D_LUMINOUS) continue;
+                hull++;
+                for (int j = 0; j < 3; j++) r = std::max(r, length(load(out.vertices[k + j].pos) - o));
+            }
+            if (!hull || r > 0.3f * -o.z) continue;   // the Death Star, the capital ships near the eye
             keys_now.push_back(in.key);
             Ship sh;
             sh.key = in.key;
             sh.origin = f.local(o);
             for (int a = 0; a < 3; a++) sh.axes[a] = normalize(f.local(load(in.axes + 3 * a)));
             sh.radius = r;
-            sh.verts.assign(out.vertices.begin() + from, out.vertices.begin() + to);
-            for (R3DVertex& x : sh.verts) {
-                store(x.pos, f.local(load(x.pos) - o));
-                store(x.nrm, f.local(load(x.nrm)));
+            sh.verts.reserve(hull * 3);
+            for (uint32_t k = from; k + 2 < to; k += 3) {
+                if (out.vertices[k].flags & R3D_LUMINOUS) continue;
+                for (int j = 0; j < 3; j++) {
+                    R3DVertex x = out.vertices[k + j];
+                    store(x.pos, f.local(load(x.pos) - o));
+                    store(x.nrm, f.local(load(x.nrm)));
+                    sh.verts.push_back(x);
+                }
             }
             ships.push_back(std::move(sh));
         }
