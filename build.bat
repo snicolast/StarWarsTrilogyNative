@@ -14,14 +14,15 @@ set ZIP=%~1
 if "%ZIP%"=="" set ZIP=%SWT_ROM_ZIP%
 if "%ZIP%"=="" set ZIP=%~dp0swtrilgy.zip
 
-python -c "" >nul 2>&1 || goto no_python
+rem Python 3.10 or later, checked: "python" in PATH can be an older one (issue #51)
+call tools\find_python.bat || goto no_python
 rem drive_program.bin too: data\ from an older build.bat can lack it (a set without
 rem epr-21119), and the game then stops at FAILED FEEDBACK LEVER INITIALIZE
 if exist data\crom.bin if exist data\drive_program.bin goto rom_ok
 if not exist "%ZIP%" goto no_rom
-python tools\romtool.py "%ZIP%" data || goto fail
+%SWT_PY% tools\romtool.py "%ZIP%" data || goto fail
 :rom_ok
-python tools\recomp.py data\crom.bin build\gen || goto fail
+%SWT_PY% tools\recomp.py data\crom.bin build\gen || goto fail
 rem NVIDIA DLSS SDK (not in the repository): fetched from NVIDIA's GitHub the first time.
 rem Every file is checked, not only the library: a third_party\ngx left incomplete
 rem (an interrupted download, files copied by hand) is fetched again (issue #32)
@@ -78,7 +79,8 @@ echo in the SWT_ROM_ZIP environment variable, or put it next to build.bat. Only 
 goto fail
 
 :no_python
-echo Python 3 not found. Run install.bat instead: it installs Python and the C++ tools, then builds.
+echo Python 3.10 or later not found ^(an older Python or the Microsoft Store alias does not count^).
+echo Run install.bat instead: it installs Python and the C++ tools, then builds.
 goto fail
 
 :try_cmake
