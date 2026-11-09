@@ -42,10 +42,12 @@ void dogfight_draw_hud(uint32_t* front, int w, int h);
 
 // The cockpit round the camera (dogfight_cockpit.cpp), if the user imported
 // one (tools/import_cockpit.py: models/cockpit/cockpit.mesh and its texture;
-// the game has none of its own). load: read once, false if there is none. add: it
-// and what its screen shows now, into a scene. Where the eye sits in it, in
+// the game has none of its own). load: read once, false if there is none. add: it,
+// its lamps and what its screen shows now, into a scene. Where the eye sits in it, in
 // the model's units (centimetres) and degrees:
 //   SWT_DOGFIGHT_COCKPIT=right,up,back,tilt,fov   (default 0,3,8,0,52; "off": no cockpit)
+// It is dim inside (SWT_DOGFIGHT_LIGHT=floor,sun; default 0.10,0.30), lit by
+// its own lamps, and sways with the ship (SWT_DOGFIGHT_SWAY=amount; 0: none)
 #include <string>
 #include <vector>
 bool dogfight_cockpit_load(const char* dir);
@@ -54,7 +56,10 @@ bool dogfight_cockpit_load(const char* dir);
 // the frame interpolation takes seconds to settle from)
 std::vector<std::string> dogfight_cockpit_textures();
 bool dogfight_cockpit_on();
-void dogfight_cockpit_add(R3DNativeScene& scene);
+// time: seconds flown (its lamps blink). sway: how the cockpit is thrown about
+// now, a turn about the eye as a rotation vector (radians) and a shift
+// (units), in the view's axes (x right, y up, -z ahead); null: none
+void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway);
 
 // The mode's loop (runtime.cpp, game thread). begin: the stage is loaded
 // (called from the unseen run), the first native frame is published. run:

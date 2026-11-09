@@ -38,11 +38,23 @@ struct Panel {
     float aspect = 1.4f;             // width over height
 };
 
+// A lamp or LED of the model: the triangles of the "Glow" group that touch one another
+struct Lamp {
+    V3 centre, facing;
+    float area = 0;      // square metres
+    uint32_t seed = 0;   // how it blinks
+};
+
 struct Cockpit {
     bool on = false;
     std::shared_ptr<const std::vector<R3DNativeScene::Mesh>> meshes;
     Panel panel;
     float fov = 52;
+    std::string lamp_texture;
+    std::vector<Vertex> lamp_verts;     // three a triangle
+    std::vector<uint32_t> lamp_of;      // per triangle: its lamp
+    std::vector<Lamp> lamps;
+    std::vector<R3DNativeScene::Glow> glows;   // the light of the biggest lamps on what is near
 };
 Cockpit g_cockpit;
 
@@ -87,6 +99,84 @@ struct Display {
 // RGBA8, R in the low byte
 constexpr uint32_t GROUND = 0xFF0A1C06u, GREEN = 0xFF50F040u, YELLOW = 0xFF30E0F0u, DIM = 0xFF184810u;
 
+// The lamps of the "Glow" group: its triangles joined where they share a
+// corner. The biggest light what is around them
+void find_lamps() {
+    Cockpit& c = g_cockpit;
+    const size_t tris = c.lamp_verts.size() / 3;
+    std::vector<uint32_t> parent(tris);
+    for (uint32_t i = 0; i < tris; i++) parent[i] = i;
+    auto root = [&](uint32_t i) {
+        while (parent[i] != i) i = parent[i] = parent[parent[i]];
+        return i;
+    };
+    // Corners by place (to a tenth of a millimetre), sorted: equal neighbours are one corner
+    struct Corner {
+        int32_t x, y, z;
+        uint32_t tri;
+        bool operator<(const Corner& o) const { return x != o.x ? x < o.x : y != o.y ? y < o.y : z < o.z; }
+    };
+    std::vector<Corner> corners;
+    for (uint32_t i = 0; i < tris * 3; i++) {
+        const float* p = c.lamp_verts[i].pos;
+        corners.push_back({int32_t(std::lround(p[0] * 1e4f)), int32_t(std::lround(p[1] * 1e4f)), int32_t(std::lround(p[2] * 1e4f)), i / 3});
+    }
+    std::sort(corners.begin(), corners.end());
+    for (size_t i = 1; i < corners.size(); i++)
+        if (!(corners[i - 1] < corners[i])) parent[root(corners[i].tri)] = root(corners[i - 1].tri);
+    std::vector<int> index(tris, -1);
+    c.lamp_of.resize(tris);
+    c.lamps.clear();
+    for (uint32_t i = 0; i < tris; i++) {
+        uint32_t r = root(i);
+        if (index[r] < 0) index[r] = int(c.lamps.size()), c.lamps.push_back({});
+        c.lamp_of[i] = uint32_t(index[r]);
+        Lamp& l = c.lamps[size_t(index[r])];
+        V3 a = at(c.lamp_verts[i * 3].pos), b = at(c.lamp_verts[i * 3 + 1].pos), d = at(c.lamp_verts[i * 3 + 2].pos);
+        V3 n = cross(b - a, d - a);
+        float area = 0.5f * std::sqrt(dot(n, n));
+        l.centre = l.centre + (a + b + d) * (area / 3);
+        l.facing = l.facing + n;
+        l.area += area;
+    }
+    for (Lamp& l : c.lamps) {
+        if (l.area > 0) l.centre = l.centre * (1 / l.area);
+        l.facing = unit(l.facing);
+        // (the same from run to run: from where it is)
+        l.seed = uint32_t(std::lround(l.centre.x * 977) * 73856093 ^ std::lround(l.centre.y * 977) * 19349663 ^
+                          std::lround(l.centre.z * 977) * 83492791);
+        l.seed = (l.seed ^ (l.seed >> 13)) * 0x5BD1E995u;
+        l.seed ^= l.seed >> 15;
+    }
+    // The light of the three biggest, from a little in front of each
+    std::vector<const Lamp*> big;
+    for (const Lamp& l : c.lamps) big.push_back(&l);
+    std::sort(big.begin(), big.end(), [](const Lamp* a, const Lamp* b) { return a->area > b->area; });
+    c.glows.clear();
+    for (size_t i = 0; i < big.size() && i < 3; i++) {
+        R3DNativeScene::Glow g;
+        V3 p = big[i]->centre + big[i]->facing * 0.04f;
+        g.pos[0] = p.x, g.pos[1] = p.y, g.pos[2] = p.z;
+        g.color[0] = 1.0f, g.color[1] = 0.22f, g.color[2] = 0.16f;   // the red of the model's lamps
+        g.radius = 0.14f;
+        g.strength = 0.4f;
+        c.glows.push_back(g);
+    }
+}
+
+// How bright a lamp is now, 0..1: most are steady, some blink at their own
+// pace, a few flicker now and then; the big ones only breathe
+float lamp_level(const Lamp& l, double time) {
+    if (l.area > 4e-4f) return 0.82f + 0.08f * float(std::sin(time * 1.3 + (l.seed & 255) * 0.1));
+    uint32_t kind = l.seed % 100;
+    if (kind < 50) return 1.0f;
+    double period = 0.5 + double((l.seed >> 8) % 1000) / 1000.0 * 2.2, phase = double((l.seed >> 18) % 1000) / 1000.0;
+    double at_ = time / period + phase;
+    double f = at_ - std::floor(at_);
+    if (kind < 85) return f < 0.5 ? 1.0f : 0.12f;   // on and off
+    return f < 0.06 || (f > 0.12 && f < 0.16) ? 0.12f : 1.0f;   // two short dips
+}
+
 }  // namespace
 
 bool dogfight_cockpit_on() { return g_cockpit.on; }
@@ -96,6 +186,7 @@ std::vector<std::string> dogfight_cockpit_textures() {
     if (g_cockpit.on)
         for (const R3DNativeScene::Mesh& m : *g_cockpit.meshes)
             if (!m.texture.empty()) out.push_back(m.texture);
+    if (g_cockpit.on && !g_cockpit.lamp_texture.empty() && !g_cockpit.lamp_verts.empty()) out.push_back(g_cockpit.lamp_texture);
     return out;
 }
 
@@ -160,6 +251,9 @@ bool dogfight_cockpit_load(const char* dir) {
             p.aspect = (r1 - r0) / std::max(u1 - u0, 1e-6f);
             continue;
         }
+        const bool glow = !strcmp(name, "Glow");
+        // (the lamps are drawn a hair nearer the eye than the surface they are part of)
+        const float scale = glow ? SCALE * 0.997f : SCALE;
         R3DNativeScene::Mesh mesh;
         if (texture[0]) mesh.texture = base + "/" + texture;
         for (uint32_t i = 0; i + 2 < count; i += 3) {
@@ -173,11 +267,16 @@ bool dogfight_cockpit_load(const char* dir) {
             for (int k = 0; k < 3; k++) {
                 Vertex v;
                 V3 nrm = unit(turn(at(&raw[(i + k) * 8 + 3])));
-                v.pos[0] = q[k].x * SCALE, v.pos[1] = q[k].y * SCALE, v.pos[2] = q[k].z * SCALE;
+                v.pos[0] = q[k].x * scale, v.pos[1] = q[k].y * scale, v.pos[2] = q[k].z * scale;
                 v.nrm[0] = nrm.x, v.nrm[1] = nrm.y, v.nrm[2] = nrm.z;
                 v.uv[0] = raw[(i + k) * 8 + 6], v.uv[1] = raw[(i + k) * 8 + 7];
                 mesh.verts.push_back(v);
             }
+        }
+        if (glow) {
+            g_cockpit.lamp_texture = mesh.texture;
+            g_cockpit.lamp_verts = std::move(mesh.verts);
+            continue;
         }
         // The nearest triangles first: what lies behind them is then not
         // shaded at all (the dashboard is many layers deep, and at 1440p the
@@ -206,19 +305,61 @@ bool dogfight_cockpit_load(const char* dir) {
         g_cockpit = Cockpit{};
         return false;
     }
+    find_lamps();
     g_cockpit.meshes = meshes;
     g_cockpit.fov = std::clamp(fov, 20.0f, 120.0f);
     g_cockpit.on = true;
-    printf("[dogfight] cockpit: %zu triangles in view%s (eye %g,%g,%g tilt %g, field of view %g)\n", triangles,
-           g_cockpit.panel.found ? ", with a screen" : "", right, up, back, tilt, g_cockpit.fov);
+    printf("[dogfight] cockpit: %zu triangles in view%s, %zu lamps (eye %g,%g,%g tilt %g, field of view %g)\n", triangles,
+           g_cockpit.panel.found ? ", with a screen" : "", g_cockpit.lamps.size(), right, up, back, tilt, g_cockpit.fov);
     return true;
 }
 
-void dogfight_cockpit_add(R3DNativeScene& scene) {
+void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway) {
     if (!g_cockpit.on) return;
     scene.fixed = g_cockpit.meshes;
     scene.fov = g_cockpit.fov;
+    // A dim inside: little of the sun gets in, the lamps and the screen light it
+    // (SWT_DOGFIGHT_LIGHT=floor,sun: the light in the dark and what the sun adds, 0..1)
+    static const struct Light {
+        float floor = 0.10f, sun = 0.30f;
+        Light() {
+            if (const char* e = getenv("SWT_DOGFIGHT_LIGHT")) sscanf(e, "%f,%f", &floor, &sun);
+        }
+    } light;
+    scene.fixed_light[0] = light.floor, scene.fixed_light[1] = light.sun;
+    // The sway: a turn (a small rotation vector, radians) about the eye and a
+    // shift back or ahead (Rodrigues' formula; view axes: x right, y up, -z ahead)
+    if (sway) {
+        V3 w{sway[0], sway[1], sway[2]};
+        float angle = std::sqrt(dot(w, w));
+        V3 k = angle > 1e-6f ? w * (1 / angle) : V3{1, 0, 0};
+        float cs = std::cos(angle), sn = std::sin(angle);
+        const V3 e[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+        for (int c = 0; c < 3; c++) {
+            V3 r = e[c] * cs + cross(k, e[c]) * sn + k * (dot(k, e[c]) * (1 - cs));
+            scene.fixed_m[c * 4] = r.x, scene.fixed_m[c * 4 + 1] = r.y, scene.fixed_m[c * 4 + 2] = r.z;
+        }
+        scene.fixed_m[12] = sway[3], scene.fixed_m[13] = sway[4], scene.fixed_m[14] = sway[5];
+    }
+    if (!g_cockpit.lamp_verts.empty()) {
+        scene.lamp_texture = g_cockpit.lamp_texture;
+        scene.lamps = g_cockpit.lamp_verts;
+        std::vector<uint8_t> level(g_cockpit.lamps.size());
+        for (size_t i = 0; i < level.size(); i++) level[i] = uint8_t(std::clamp(lamp_level(g_cockpit.lamps[i], time), 0.0f, 1.0f) * 255.0f + 0.5f);
+        for (size_t i = 0; i < scene.lamps.size(); i++) scene.lamps[i].color = 0xFF000000u | level[g_cockpit.lamp_of[i / 3]] * 0x010101u;
+        scene.glows = g_cockpit.glows;
+    }
     if (!g_cockpit.panel.found) return;
+    {   // the screen's own light on the dashboard, green
+        const Panel& p = g_cockpit.panel;
+        V3 c = p.top_left + p.right * 0.5f + p.down * 0.5f + p.out * 0.05f;
+        R3DNativeScene::Glow g;
+        g.pos[0] = c.x, g.pos[1] = c.y, g.pos[2] = c.z;
+        g.color[0] = 0.25f, g.color[1] = 1.0f, g.color[2] = 0.3f;
+        g.radius = 0.12f;
+        g.strength = 0.35f;
+        scene.glows.push_back(g);
+    }
     // The screen: 100 pixels high. Its corners are round under the model's
     // glass, so a margin is left
     Display d{g_cockpit.panel, scene.lights, 100 * g_cockpit.panel.aspect, 100};

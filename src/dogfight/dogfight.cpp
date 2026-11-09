@@ -71,6 +71,11 @@ struct Sim {
     Frame at;
     float speed = 60, throttle = 0.4f;
     std::vector<Ship> ships;
+    double time = 0;
+    // The cockpit round the pilot: it leads the turns a little and is left
+    // behind by a push of the engines, then settles (dogfight_cockpit_add's
+    // sway: a turn and a shift in the view's axes)
+    float sway[6] = {};
 };
 Sim g_sim;
 std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};   // for the HUD, drawn on another thread
@@ -116,6 +121,31 @@ void step(float dt) {
     float agile = 1.0f - 0.33f * std::fabs(s.throttle - 0.5f) * 2.0f;
     s.at.turn(c.pitch * TURN_RATE * agile * dt, c.yaw * TURN_RATE * agile * dt, c.roll * ROLL_RATE * dt);
     s.pos = s.pos + s.at.fwd * (s.speed * dt);
+    s.time += dt;
+    {
+        // Where the controls throw it (SWT_DOGFIGHT_SWAY: how much, 1 = as made, 0 = none)
+        static const float amount = [] {
+            const char* e = getenv("SWT_DOGFIGHT_SWAY");
+            return e ? std::clamp(float(atof(e)), 0.0f, 5.0f) : 1.0f;
+        }();
+        float push = (target - s.speed) / (SPEED_MAX - SPEED_MIN);   // + while it gathers speed
+        const float to[6] = {
+            c.pitch * agile * 0.022f * amount,    // nose up: the dashboard rises
+            -c.yaw * agile * 0.028f * amount,     // to the right: it goes right
+            -c.roll * 0.045f * amount,            // rolls further than the stars
+            c.yaw * agile * 0.006f * amount,      // and slides a little towards the turn
+            c.pitch * agile * 0.004f * amount,
+            -push * 0.035f * amount,              // pushed back into the seat: the dashboard moves away (nearer when it slows)
+        };
+        // A spring with a little overshoot: quick to go, slower to settle
+        static float speed_of[6] = {};
+        if (s.time <= dt) memset(speed_of, 0, sizeof(speed_of));
+        for (int i = 0; i < 6; i++) {
+            float accel = (to[i] - s.sway[i]) * 60.0f - speed_of[i] * 11.0f;
+            speed_of[i] += accel * dt;
+            s.sway[i] += speed_of[i] * dt;
+        }
+    }
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
     float nearest = 0;
     for (const Ship& ship : s.ships) {
@@ -156,7 +186,7 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
     Vec cam = s.pos + s.at.right * eye.right + s.at.down * -eye.up + s.at.fwd * eye.fwd;
     scene->cam_pos[0] = cam.x, scene->cam_pos[1] = cam.y, scene->cam_pos[2] = cam.z;
     // (a cockpit of the user's takes the place of the game's ship round the camera)
-    if (dogfight_cockpit_on()) dogfight_cockpit_add(*scene);
+    if (dogfight_cockpit_on()) dogfight_cockpit_add(*scene, s.time, s.sway);
     else if (eye.ship) {
         R3DNativeScene::Item it;
         it.count = XWING.count;

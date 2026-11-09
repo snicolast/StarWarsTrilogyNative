@@ -21,14 +21,15 @@ cockpit.mesh, little-endian:
     char[8]  "SWTMESH1"
     u32      groups
     per group:
-        char[32]  name (the FBX object's: "Cockpit", "Screen", "Windows")
+        char[32]  name (the FBX object's: "Cockpit", "Screen", "Windows"; "Glow":
+                  the lit parts of a textured one, see glow_group)
         char[64]  texture file name ("" = none)
         u32       vertices (three per triangle)
         per vertex: float position[3], normal[3], uv[2]
 Positions in the file's own units and axes (x right, y up, the nose at -z);
 v runs downwards (the image's rows).
 
-Only the standard library is used.
+Only the standard library is used, and Pillow for the lights if it is there.
 """
 import io
 import os
@@ -185,6 +186,59 @@ def convert(fbx):
     return groups
 
 
+def write_group(out, name, image, verts):
+    out.write(struct.pack('<32s64sI', name.encode('latin1')[:31], image.encode('latin1')[:63], len(verts)))
+    for p, n, t in verts:
+        out.write(struct.pack('<8f', p[0], p[1], p[2], n[0], n[1], n[2], t[0], t[1]))
+    print('%-10s %6d triangles  texture: %s' % (name, len(verts) // 3, image or '(none)'))
+
+
+def glow_group(files, images, image, verts, out_dir):
+    """The lights of a textured group: a "Glow" group of its triangles that show
+    lit texels of the model's light map (the image named like the texture plus
+    "_light": its lamps and LEDs on black), with that map as an image whose
+    alpha is where it is lit. The game draws them glowing over the group, each
+    lamp by itself, so they can blink. Needs Pillow; a string says why not."""
+    stem = os.path.splitext(image)[0].lower()
+    light = images.get(stem + '_light')
+    if not light:
+        return None
+    try:
+        from PIL import Image
+    except ImportError:
+        return 'No lights: the light map needs Pillow (python -m pip install Pillow), then run this again.'
+    Image.MAX_IMAGE_PIXELS = None
+    rgb = Image.open(io.BytesIO(files[light])).convert('RGB')
+    if max(rgb.size) > 2048:
+        rgb = rgb.resize((2048, 2048), Image.LANCZOS)
+    lit = rgb.convert('L').point(lambda v: 0)   # (same size)
+    r, g, b = rgb.split()
+    from PIL import ImageChops
+    peak = ImageChops.lighter(ImageChops.lighter(r, g), b)
+    lit = peak.point(lambda v: 255 if v > 48 else 0)
+    name = stem + '_glow.png'
+    Image.merge('RGBA', (r, g, b, lit)).save(os.path.join(out_dir, name))
+    # Which triangles: those whose rectangle of the map has lit texels (a coarse grid of it)
+    N = 256
+    grid = lit.resize((N, N), Image.BOX).load()
+    out = []
+    for i in range(0, len(verts), 3):
+        tri = verts[i:i + 3]
+        us = [min(max(q[2][0], 0.0), 0.9999) for q in tri]
+        vs = [min(max(q[2][1], 0.0), 0.9999) for q in tri]
+        hit = False
+        for y in range(int(min(vs) * N), int(max(vs) * N) + 1):
+            for x in range(int(min(us) * N), int(max(us) * N) + 1):
+                if grid[x, y] > 24:
+                    hit = True
+                    break
+            if hit:
+                break
+        if hit:
+            out.extend(tri)
+    return ('Glow', name, out) if out else None
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -221,6 +275,8 @@ def main():
     groups = convert(files[fbx[0]])
     os.makedirs(out_dir, exist_ok=True)
     main_image = ''
+    extra = []
+    glow_note = ''
     with open(os.path.join(out_dir, 'cockpit.mesh'), 'wb') as out:
         out.write(b'SWTMESH1' + struct.pack('<I', len(groups)))
         for name, texture, verts in groups:
@@ -235,13 +291,22 @@ def main():
                     plain = plain or list(images.values())
                     main_image = max(plain, key=lambda n: len(files[n])) if plain else ''
                 image = main_image
-            out.write(struct.pack('<32s64sI', name.encode('latin1')[:31], image.encode('latin1')[:63], len(verts)))
-            for p, n, t in verts:
-                out.write(struct.pack('<8f', p[0], p[1], p[2], n[0], n[1], n[2], t[0], t[1]))
-            print('%-10s %6d triangles  texture: %s' % (name, len(verts) // 3, image or '(none)'))
+            write_group(out, name, image, verts)
+            if image:
+                lit = glow_group(files, images, image, verts, out_dir)
+                if isinstance(lit, str):
+                    glow_note = lit
+                elif lit:
+                    extra.append(lit)
+        for name, image, verts in extra:
+            write_group(out, name, image, verts)
+        out.seek(8)
+        out.write(struct.pack('<I', len(groups) + len(extra)))
     for name in images.values():
         with open(os.path.join(out_dir, name), 'wb') as f:
             f.write(files[name])
+    if glow_note:
+        print(glow_note)
     print('Written to', out_dir)
     return 0
 

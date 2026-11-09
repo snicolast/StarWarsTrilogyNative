@@ -604,6 +604,18 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
     v.sun_intensity = 1;
     v.ambient = 0;
 
+    // They stand where the scene says now, and stood where it said in the
+    // frame before (the display goes from one to the other)
+    const float* m = native_->fixed_m;
+    const bool follows = out.frame == fixed_frame_ + 1;
+    const float* was = follows ? fixed_m_ : m;
+    auto place = [](const float* t, const float* p, float* o) {
+        for (int r = 0; r < 3; r++) o[r] = t[r] * p[0] + t[4 + r] * p[1] + t[8 + r] * p[2] + t[12 + r];
+    };
+    auto turn = [](const float* t, const float* p, float* o) {
+        for (int r = 0; r < 3; r++) o[r] = t[r] * p[0] + t[4 + r] * p[1] + t[8 + r] * p[2];
+    };
+
     if (fixed_src_ != native_->fixed) {
         fixed_src_ = native_->fixed;
         fixed_.clear();
@@ -612,9 +624,6 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
                 uint32_t slot = !mesh.texture.empty() && pack_ ? pack_->add_file(mesh.texture) : 0;
                 for (const R3DNativeScene::Vertex& q : mesh.verts) {
                     R3DVertex o{};
-                    memcpy(o.pos, q.pos, 12);
-                    memcpy(o.prev, q.pos, 12);
-                    memcpy(o.nrm, q.nrm, 12);
                     memcpy(o.uv, q.uv, 8);
                     o.color = q.color;
                     o.flags = R3D_FIXED_SHADE | (slot ? R3D_TEXTURED : 0);
@@ -625,17 +634,41 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
     }
     const float* sun = scene->sun;
     float sun_len = std::sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
-    float lit = sun_len > 0 ? 0.75f / sun_len : 0;
-    for (R3DVertex& o : fixed_)
-        o.shade = 0.35f + lit * std::max(0.0f, o.nrm[0] * sun[0] + o.nrm[1] * sun[1] + o.nrm[2] * sun[2]);
+    const float floor = native_->fixed_light[0], lit = sun_len > 0 ? native_->fixed_light[1] / sun_len : 0;
+    if (fixed_src_) {
+        size_t i = 0;
+        for (const R3DNativeScene::Mesh& mesh : *fixed_src_)
+            for (const R3DNativeScene::Vertex& q : mesh.verts) {
+                R3DVertex& o = fixed_[i++];
+                place(m, q.pos, o.pos);
+                place(was, q.pos, o.prev);
+                turn(m, q.nrm, o.nrm);
+                o.shade = floor + lit * std::max(0.0f, o.nrm[0] * sun[0] + o.nrm[1] * sun[1] + o.nrm[2] * sun[2]);
+            }
+    }
 
     auto& verts = out.vertices;
     v.opaque_first = uint32_t(verts.size());
     verts.insert(verts.end(), fixed_.begin(), fixed_.end());
+    // The lamps: their image where its alpha is solid, glowing, as bright as
+    // their colour says (R3D_FIXED_SHADE on a luminous polygon: 1 + shade)
+    uint32_t lamp_slot = !native_->lamps.empty() && !native_->lamp_texture.empty() && pack_ ? pack_->add_file(native_->lamp_texture) : 0;
+    if (lamp_slot)
+        for (const R3DNativeScene::Vertex& q : native_->lamps) {
+            R3DVertex o{};
+            place(m, q.pos, o.pos);
+            place(was, q.pos, o.prev);
+            memcpy(o.uv, q.uv, 8);
+            o.color = 0xFFFFFFFFu;
+            o.shade = float(q.color & 0xFF) / 255.0f - 1.0f;
+            o.flags = R3D_TEXTURED | R3D_ALPHA_TEST | R3D_LUMINOUS | R3D_FIXED_SHADE;
+            o.replace = lamp_slot;
+            verts.push_back(o);
+        }
     for (const R3DNativeScene::Vertex& q : native_->lights) {
         R3DVertex o{};
-        memcpy(o.pos, q.pos, 12);
-        memcpy(o.prev, q.pos, 12);
+        place(m, q.pos, o.pos);
+        place(was, q.pos, o.prev);
         o.color = q.color;
         o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;   // (with shade 0 and no ambient: its colour as it is)
         verts.push_back(o);
@@ -644,6 +677,19 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
     v.trans_first = uint32_t(verts.size());
     out.polygons += v.opaque_count / 3;
     out.viewports.push_back(v);
+    // Their light on what is near (the shader's glow lights: the lightsabres' in the duels)
+    for (const R3DNativeScene::Glow& g : native_->glows) {
+        if (out.glows.size() >= size_t(R3DScene::MAX_GLOWS)) break;
+        R3DScene::Glow o{};
+        place(m, g.pos, o.a);
+        memcpy(o.b, o.a, 12);
+        memcpy(o.color, g.color, 12);
+        o.radius = g.radius;
+        o.strength = g.strength;
+        out.glows.push_back(o);
+    }
+    memcpy(fixed_m_, m, sizeof(fixed_m_));
+    fixed_frame_ = out.frame;
 }
 
 // --view-model (debugging aid): the models asked for, alone before the

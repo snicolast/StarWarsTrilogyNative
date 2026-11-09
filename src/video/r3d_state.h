@@ -51,6 +51,22 @@ struct R3DNativeScene {
     };
     std::shared_ptr<const std::vector<Mesh>> fixed;   // lit by the set's sun; the same object while it does not change
     std::vector<Vertex> lights;                       // glowing, untextured, over them (the cockpit's screen)
+    // Its lamps: glowing triangles with an image of their own (drawn where its
+    // alpha is solid), their colour a brightness (they blink)
+    std::vector<Vertex> lamps;
+    std::string lamp_texture;
+    // The light they give to what is near, as points in the same space
+    struct Glow {
+        float pos[3] = {};
+        float color[3] = {1, 1, 1};
+        float radius = 0.1f;     // where it has fallen to half
+        float strength = 1;
+    };
+    std::vector<Glow> glows;
+    // Where all of the above stands now: a small turn and shift from its
+    // place (the cockpit sways as the ship is thrown about), column-major
+    float fixed_m[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    float fixed_light[2] = {0.35f, 0.75f};   // the light on `fixed`: a floor, and how much the sun adds
     float fov = 0;   // vertical field of view in degrees (0: the set's)
 };
 
