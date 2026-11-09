@@ -17,6 +17,8 @@
 - New explosions in Yavin: fireballs that billow and burn out into smoke, sparks, burning debris, and TIE fighters breaking into real pieces of themselves
 - Each explosion looks a little different, and its sound is louder, deeper and comes from where it is on the screen
 - On by default; OPTIONS > GRAPHICS > EXPLOSIONS: ARCADE brings back the original ones
+- Lightsaber duels: arms and sabre no longer go missing, and INVERT IN DUELS now works, in every game
+- The game now starts on Intel UHD graphics (laptops) that failed with "Could not start the 3D renderer"
 
 [9] 2026-11-09
 - Flight sticks (Thrustmaster T.Flight HOTAS and the like) now work: the stick is the cabinet's lever, button 1 fires, 2 is the second trigger, 3 EVENT, 4 coin, 5 start
