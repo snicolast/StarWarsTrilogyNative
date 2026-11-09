@@ -127,10 +127,15 @@ Entirely optional: it supports the work on this project, not the game, which bel
 
 ## License
 
-The code in this repository is under the [MIT License](LICENSE). The libraries and fonts in
+The code in this repository is under the [MIT License, with additional terms](LICENSE). The libraries and fonts in
 `third_party/` keep their own licenses. The gamepad button pictures in `res/pad/` are
 [Controller Input Icons](https://opengameart.org/content/controller-input-icons) by ElDuderino (CC0). The game itself (ROM, code, data, music and voices) is
 not included and stays the property of its owners: you need your own copy of `swtrilgy.zip`.
+
+**No prebuilt downloads.** The license does not allow anyone to share a compiled build of this
+port, a ROM, or anything made from one. I have never published any of them: everyone builds the
+game themselves from their own `swtrilgy.zip`. Any ready-to-play download you find elsewhere is
+not from me, breaks the license, and is at your own risk.
 
 <sub>A fan project for personal use, not affiliated with or endorsed by Sega or Lucasfilm.
 Star Wars is a trademark of Lucasfilm Ltd.</sub>
