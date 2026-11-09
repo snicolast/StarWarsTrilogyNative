@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
     int window_w = int(SCREEN_H * 2 * std::max(g_opt.max_aspect, 4.0f / 3.0f));
     if (RECT work; SystemParametersInfoA(SPI_GETWORKAREA, 0, &work, 0))
         window_w = std::max(SCREEN_W * 2, std::min(window_w, int(work.right - work.left) - 64));
-    if (!presenter.init("Star Wars Trilogy Native", window_w, SCREEN_H * 2, g_opt.dlaa)) {
+    if (!presenter.init("Star Wars Trilogy Native by snicolast", window_w, SCREEN_H * 2, g_opt.dlaa)) {
         fprintf(stderr, "Could not start Vulkan; try --headless\n");
         return 1;
     }
@@ -866,6 +866,10 @@ int main(int argc, char** argv) {
         if (toast_shown) {
             for (int i : stats_take_new_achievements())
                 toast.push(achievement_table()[size_t(i)].name, achievement_table()[size_t(i)].text);
+            // The author's credit over the attract (seen with the menu off, --no-menu)
+            toast.set_credit(L"PC port by snicolast",
+                             L"github.com/snicolast/StarWarsTrilogyNative",
+                             g_in_attract && !g_menu_open && !g_boot_skip && !g_arcade_entry);
             RECT rc;
             GetClientRect(presenter.hwnd(), &rc);
             if (toast.draw(rc.right, rc.bottom, qpc_seconds(), toast_pixels))
@@ -1341,7 +1345,7 @@ int main(int argc, char** argv) {
             double prep_ms = prep_n ? double(prep_total) / 1000.0 / double(prep_n) : 0;
             char title[256];
             snprintf(title, sizeof(title),
-                     "Star Wars Trilogy Native - %llu Hz display - frame %llu - %zu polygons | ms/frame: game %.1f, "
+                     "Star Wars Trilogy Native by snicolast - %llu Hz display - frame %llu - %zu polygons | ms/frame: game %.1f, "
                      "prep %.1f, scene %.1f, render %.1f, GPU %.1f",
                      (unsigned long long)(presents * 1000 / (now - last_title)), (unsigned long long)(shown == ~0ull ? 0 : shown),
                      scene->polygons, game_ms, prep_ms, scene_ms, t.record * per, (t.gpu_wait + t.present) * per);

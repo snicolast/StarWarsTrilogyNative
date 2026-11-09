@@ -52,6 +52,9 @@ extern std::atomic<int> g_arcade_entry;   // PLAY: the game runs through to the 
 // a game that ends goes on to the mission select unseen instead of into the
 // attract, and g_game_over_menu asks app.cpp to open the main menu
 extern std::atomic<bool> g_skip_attract, g_game_over_menu;
+// The game is in its attract (title, rankings, demo, INSERT COIN): app.cpp
+// shows the author's credit over it
+extern std::atomic<bool> g_in_attract;
 // Widescreen: how much wider than 4:3 the 3D view is (set by the window,
 // 1 = 4:3) and the factor the game's horizontal field of view was last
 // widened by (the scene builder takes it back out of the projection)
