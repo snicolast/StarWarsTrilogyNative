@@ -518,10 +518,13 @@ void R3DSceneBuilder::view_models(const R3DViewport& v) {
         yaw = std::chrono::duration<float>(clock::now() - start).count() * 45.0f;
     }
     float cy = std::cos(yaw * DEG), sy = std::sin(yaw * DEG), cp = std::cos(view_pitch_ * DEG), sp = std::sin(view_pitch_ * DEG);
-    // GL view = T * Rx(pitch) * Ry(yaw) * C (C: Real3D axes to GL, as the viewport's)
+    // GL view = T * Rx(pitch) * Ry(yaw) * C. C: the models' own axes to GL. The
+    // ships point along their z with y down (seen with the viewport's C, which
+    // is for the camera's matrix, they stood on their noses): turned half a
+    // turn about x, so they are seen from behind, upright
     float ry[16] = {cy, 0, -sy, 0, 0, 1, 0, 0, sy, 0, cy, 0, 0, 0, 0, 1};
     float rx[16] = {1, 0, 0, 0, 0, cp, sp, 0, 0, -sp, cp, 0, 0, 0, 0, 1};
-    float cm[16] = {0, 0, -1, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 1};
+    float cm[16] = {1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1};
     Mat r{}, m{};
     M4::mul(rx, ry, r.m);
     M4::mul(r.m, cm, m.m);
@@ -556,7 +559,7 @@ void R3DSceneBuilder::view_models(const R3DViewport& v) {
     if (!told) {
         printf("[view] %zu model(s): %zu polygons, radius %.2f, size %.2f x %.2f x %.2f (view x, y, z), seen from %.2f\n",
                view_models_.size(), out_->polygons, radius, hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], dist);
-        for (const R3DInstance& in : instances_) printf("[view]   model %06X: %u polygons\n", in.model & 0xFFFFFF, in.polygons);
+        for (const R3DInstance& in : instances_) printf("[view]   model %06X: %u polygons\n", in.start & 0xFFFFFF, in.polygons);
         fflush(stdout);
         told = true;
     }
