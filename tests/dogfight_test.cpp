@@ -72,6 +72,9 @@ int main() {
     for (const auto& it : scene->items) {
         CHECK(it.count >= 1 && it.count <= 4 && it.models[0] != 0 && it.m[15] == 1);
         CHECK(std::fabs(dot(it.m, it.m) - 1) < 1e-3f && std::fabs(dot(it.m, it.m + 4)) < 1e-3f);
+        // not mirrored: x cross y = z
+        float z[3] = {it.m[1] * it.m[6] - it.m[2] * it.m[5], it.m[2] * it.m[4] - it.m[0] * it.m[6], it.m[0] * it.m[5] - it.m[1] * it.m[4]};
+        CHECK(std::fabs(dot(z, it.m + 8) - 1) < 1e-3f);
     }
     if (!g_failed) printf("dogfight: ok\n");
     return g_failed ? 1 : 0;

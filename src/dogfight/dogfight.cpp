@@ -12,7 +12,7 @@ DogfightControls g_dogfight_controls;
 
 namespace {
 
-// World and model axes: x right, y down, z forward (the game's models)
+// World axes: x right, y down, z forward (the models': x left, y up, z forward)
 struct Vec {
     float x = 0, y = 0, z = 0;
 };
@@ -134,7 +134,9 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
         R3DNativeScene::Item it;
         it.count = ship.shape->count;
         memcpy(it.models, ship.shape->models, sizeof(it.models));
-        const Vec cols[4] = {ship.at.right, ship.at.down, ship.at.fwd, ship.pos};
+        // The game's models have y up and x to the left (seen in flight: with
+        // y down the capital ships hung from their bridges)
+        const Vec cols[4] = {ship.at.right * -1, ship.at.down * -1, ship.at.fwd, ship.pos};
         for (int c = 0; c < 4; c++) it.m[c * 4] = cols[c].x, it.m[c * 4 + 1] = cols[c].y, it.m[c * 4 + 2] = cols[c].z;
         it.m[15] = 1;
         it.key = key++;

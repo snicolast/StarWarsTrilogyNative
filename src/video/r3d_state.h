@@ -23,8 +23,8 @@ using R3DPage = std::array<uint8_t, 0x10000>;
 // A scene of the PC's own (DOGFIGHT, src/dogfight): the game stands still and
 // its last frame's memory is the set (textures, models, viewports); what is
 // drawn is this list of the game's models, each where the native simulation
-// puts it, seen by its camera. World axes as the models': x right, y down,
-// z forward.
+// puts it, seen by its camera. World axes: x right, y down, z forward (the
+// game's ship models: x left, y up, z forward).
 struct R3DNativeScene {
     float cam_pos[3] = {0, 0, 0};
     float cam_axes[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};   // the camera's right, down and forward in the world
