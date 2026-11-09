@@ -88,6 +88,7 @@ uint32_t R3DSceneBuilder::model_word(uint32_t addr) const {
 
 void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     rd_.reset(state);
+    native_ = state.native.get();
     out_ = &out;
     keys_.clear();
     instance_count_.clear();
@@ -426,6 +427,21 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
         v.sun[1] = -vpf(0x06);
         v.sun[2] = -vpf(0x04);
         v.sun_intensity = std::clamp(vpf(0x07), 0.0f, 1.0f);
+        // A native scene: the set's camera stood as the native camera does
+        // with its axes on the world's, so what the set gives in view space
+        // (the sun, the stars' orientation) turns by the native camera's
+        // rotation since: view = D * A^T * world, D = diag(1, -1, -1), so
+        // turn = D * A^T * D
+        float native_turn[16];
+        if (native_) {
+            static const float D[3] = {1, -1, -1};
+            memset(native_turn, 0, 64);
+            native_turn[15] = 1;
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++) native_turn[c * 4 + r] = D[r] * native_->cam_axes[r * 3 + c] * D[c];
+            float s[3] = {v.sun[0], v.sun[1], v.sun[2]};
+            for (int r = 0; r < 3; r++) v.sun[r] = native_turn[r] * s[0] + native_turn[4 + r] * s[1] + native_turn[8 + r] * s[2];
+        }
         v.ambient = float((vp(0x24) >> 8) & 0xFF) / 255.0f;
         uint32_t fc = vp(0x22);
         v.fog_color[0] = float((fc >> 16) & 0xFF) / 255.0f;
@@ -474,6 +490,10 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
         Mat m0 = matrix(0);
         Mat base{};
         M4::mul(c.m, m0.m, base.m);
+        if (native_) {   // (the stars: they turn with the native camera)
+            Mat set = base;
+            M4::mul(native_turn, set.m, base.m);
+        }
         coord_sys_ = base;
         coord_sys_.m[12] = coord_sys_.m[13] = coord_sys_.m[14] = 0;
 
@@ -483,8 +503,11 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
         trans_keys_.clear();
         viewport_key_ = addr;
         instances_.clear();
-        if (view_models_.empty() || v.priority == 0) node_ptr(vp(0x02), base, Attribs{}, 0);
-        else if (!view_drawn_ && v.priority < 3 && v.w >= 495 && v.h >= 380) view_models(v);
+        bool own = native_ || !view_models_.empty();   // the PC's own scene in place of the game's (the stars stay)
+        bool first_full = !view_drawn_ && v.priority < 3 && v.w >= 495 && v.h >= 380;
+        if (!own || v.priority == 0) node_ptr(vp(0x02), base, Attribs{}, 0);
+        else if (first_full && native_) native_items();
+        else if (first_full) view_models(v);
         v.build_index = uint32_t(viewport_instances_.size());
         viewport_instances_.push_back(std::move(instances_));
         instances_.clear();
@@ -503,6 +526,29 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
 
     uint32_t next = vp(1);
     if (next != 0x01000000 && (next & 0xFFFFFF)) viewport(next & 0xFFFFFF, depth + 1);
+}
+
+// A native scene's objects (R3DNativeScene), in the first full-screen viewport
+// of the set: GL view = D * [A^T | -A^T * pos] * model-to-world
+void R3DSceneBuilder::native_items() {
+    view_drawn_ = true;
+    const float* a = native_->cam_axes;
+    const float* p = native_->cam_pos;
+    static const float D[3] = {1, -1, -1};
+    Mat view{};
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) view.m[c * 4 + r] = D[r] * a[r * 3 + c];
+        view.m[12 + r] = -D[r] * (a[r * 3] * p[0] + a[r * 3 + 1] * p[1] + a[r * 3 + 2] * p[2]);
+    }
+    view.m[15] = 1;
+    uint32_t saved = node_key_;
+    for (const R3DNativeScene::Item& it : native_->items) {
+        Mat m{};
+        M4::mul(view.m, it.m, m.m);
+        node_key_ = r3d_mix_key(0xD06F1647u, it.key);   // the object's own path, whatever is drawn before it
+        for (int i = 0; i < it.count; i++) model(it.models[i], m, Attribs{});
+    }
+    node_key_ = saved;
 }
 
 // --view-model (debugging aid): the models asked for, alone before the

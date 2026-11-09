@@ -183,6 +183,7 @@ private:
     void pointer_list(uint32_t addr, const Mat& m, const Attribs& a, int depth);
     void model(uint32_t addr, const Mat& m, const Attribs& a);
     void view_models(const R3DViewport& v);
+    void native_items();
     uint32_t model_word(uint32_t addr) const;
     Mat matrix(uint32_t index) const;
     void link_previous(R3DScene& out);
@@ -236,6 +237,7 @@ private:
     std::vector<uint32_t> view_models_;   // --view-model
     float view_yaw_ = 0, view_pitch_ = 0;
     bool view_drawn_ = false;
+    const R3DNativeScene* native_ = nullptr;   // the frame being built is the PC's own scene (R3DFrameState::native)
     bool hud_edges_ = true;
     bool share_world_ = false;
     bool procedural_sky_ = false;

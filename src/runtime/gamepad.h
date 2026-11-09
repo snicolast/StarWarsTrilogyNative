@@ -54,6 +54,11 @@ struct PadState {
     bool fire = false, reload = false, event = false;  // held
     bool start = false, back = false;   // pressed since the last poll
     double last_used = -1e9;            // seconds (poll clock) of its last input
+    // Flying (DOGFIGHT): the sticks as they are held, -1..1 with their dead
+    // zone (left x, y, right x, y; a flight stick: its x, y and twist), the
+    // triggers 0..1, and a flight stick's throttle lever 0..1 (has_throttle)
+    float fly[4] = {}, fly_triggers[2] = {}, fly_throttle = 0;
+    bool has_throttle = false;
 };
 
 class Gamepads {

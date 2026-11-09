@@ -20,6 +20,23 @@
 
 using R3DPage = std::array<uint8_t, 0x10000>;
 
+// A scene of the PC's own (DOGFIGHT, src/dogfight): the game stands still and
+// its last frame's memory is the set (textures, models, viewports); what is
+// drawn is this list of the game's models, each where the native simulation
+// puts it, seen by its camera. World axes as the models': x right, y down,
+// z forward.
+struct R3DNativeScene {
+    float cam_pos[3] = {0, 0, 0};
+    float cam_axes[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};   // the camera's right, down and forward in the world
+    struct Item {
+        uint32_t models[4] = {};   // the parts of one object (same origin)
+        int count = 0;
+        float m[16] = {};          // model to world, column-major
+        uint32_t key = 0;          // the same from frame to frame (interpolation)
+    };
+    std::vector<Item> items;
+};
+
 struct R3DFrameState {
     // Key = PPC address >> 16 (0x8C00.., 0x8E00.., 0x9800..)
     std::unordered_map<uint32_t, std::shared_ptr<const R3DPage>> pages;
@@ -29,6 +46,7 @@ struct R3DFrameState {
     // spaced for the interpolation), `flushed` when the game finished it
     double time = 0, flushed = 0;
     uint64_t vblank = 0;   // the game's frame counter when it was finished
+    std::shared_ptr<const R3DNativeScene> native;   // drawn in place of the game's scene (null: the game's)
 };
 
 // The culling and polygon RAM of one FrameState as flat page tables, for the

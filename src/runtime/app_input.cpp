@@ -23,6 +23,7 @@
 #include <mmsystem.h>   // timeBeginPeriod
 #include <windowsx.h>   // GET_X_LPARAM
 
+#include "../dogfight/dogfight.h"
 #include "gamepad.h"
 #include "inputs.h"
 #include "options.h"
@@ -392,10 +393,47 @@ static std::vector<AimTarget> aim_targets() {
     return out;
 }
 
+// DOGFIGHT's controls: left stick (or a flight stick, the arrow keys, or the
+// mouse away from the middle of the window when there is no pad) pitch and
+// yaw, right stick's x (the twist, A / D) roll, the triggers (W / S) faster
+// and slower, a flight stick's own lever the throttle itself
+static void dogfight_controls(bool focused) {
+    DogfightControls& c = g_dogfight_controls;
+    float pitch = 0, yaw = 0, roll = 0, throttle = 0;
+    bool absolute = false, any_pad = false;
+    if (focused && !g_menu_open) {
+        for (int i = 0; i < Gamepads::MAX; i++) {
+            const PadState& pad = g_pads.pad(i);
+            if (!pad.connected) continue;
+            any_pad = true;
+            yaw += pad.fly[0], pitch += pad.fly[1], roll += pad.fly[2];   // (stick back = nose up)
+            throttle += pad.fly_triggers[1] - pad.fly_triggers[0];
+            if (pad.has_throttle) absolute = true, throttle = pad.fly_throttle;
+        }
+        if (g_pad_settings.invert & 2) pitch = -pitch;
+        auto key = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
+        float kx = float(key(VK_RIGHT)) - float(key(VK_LEFT)), ky = float(key(VK_DOWN)) - float(key(VK_UP));
+        yaw += kx, pitch += ky;
+        roll += float(key('D')) - float(key('A'));
+        if (!absolute) throttle += float(key('W')) - float(key('S'));
+        if (!any_pad && kx == 0 && ky == 0) {   // the mouse (the lever it moves), past a dead zone round the middle
+            auto axis = [](int adc) {
+                float v = float(adc - 128) / 127.0f, m = std::fabs(v);
+                return m < 0.12f ? 0.0f : std::copysign((m - 0.12f) / 0.88f, v);
+            };
+            yaw += axis(g_inputs.p[0].gun_x), pitch += axis(g_inputs.p[0].gun_y);
+        }
+    }
+    c.pitch = std::clamp(pitch, -1.0f, 1.0f), c.yaw = std::clamp(yaw, -1.0f, 1.0f), c.roll = std::clamp(roll, -1.0f, 1.0f);
+    c.absolute = absolute;
+    c.throttle = absolute ? throttle : std::clamp(throttle, -1.0f, 1.0f);
+}
+
 bool poll_gamepads(HWND hwnd) {
     bool focused = GetForegroundWindow() == hwnd;
     g_pads.set_targets(aim_targets());
     g_pads.poll(g_pad_settings, focused, g_menu_open);
+    if (g_dogfight == 2) dogfight_controls(focused);
     static bool blocked[Gamepads::MAX] = {}, fire_was[Gamepads::MAX] = {}, reload_was[Gamepads::MAX] = {};
     uint32_t connected = 0;
     for (int i = 0; i < Gamepads::MAX; i++)

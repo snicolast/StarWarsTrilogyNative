@@ -266,6 +266,14 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
         float ax = 0, ay = 0, tilt = 0;
         stick(p, SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, ax, ay, tilt);
         float lx = ax, ly = ay;   // the left stick alone, for the menus
+        {
+            float rx = 0, ry = 0, rtilt = 0;
+            stick(p, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, rx, ry, rtilt);
+            bool live = focused && !menu;
+            st.fly[0] = live ? lx : 0, st.fly[1] = live ? ly : 0, st.fly[2] = live ? rx : 0, st.fly[3] = live ? ry : 0;
+            st.fly_triggers[0] = live ? float(SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER)) / 32767.0f : 0;
+            st.fly_triggers[1] = live ? float(SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)) / 32767.0f : 0;
+        }
         stick(p, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, ax, ay, tilt);
         const float inv_x = set.invert & 1 ? -1.0f : 1.0f, inv_y = set.invert & 2 ? -1.0f : 1.0f;   // not in the menus
         ax *= inv_x, ay *= inv_y;
@@ -380,6 +388,14 @@ void Gamepads::poll_joystick(Slot& s, PadState& st, const GamepadSettings& set, 
     for (int b = 0; b < nb; b++) now_down[b] = SDL_GetJoystickButton(j, b);
     auto pressed = [&](int b) { return now_down[b] && !s.buttons[b]; };
     float x = flight_axis(j, 0), y = flight_axis(j, 1);
+    {   // DOGFIGHT: the throttle lever (third axis, pushed forward = -1) and the twist (fourth), where there are any
+        int axes = SDL_GetNumJoystickAxes(j);
+        bool live = focused && !menu;
+        st.fly[0] = live ? x : 0, st.fly[1] = live ? y : 0;
+        st.fly[2] = live && axes > 3 ? flight_axis(j, 3) : 0;
+        st.has_throttle = axes > 2;
+        if (axes > 2) st.fly_throttle = 0.5f - 0.5f * float(SDL_GetJoystickAxis(j, 2)) / 32767.0f;
+    }
     uint8_t hat = SDL_GetNumJoystickHats(j) > 0 ? SDL_GetJoystickHat(j, 0) : SDL_HAT_CENTERED;
     bool any = x != 0 || y != 0 || hat != SDL_HAT_CENTERED;
     for (bool d : now_down) any |= d;

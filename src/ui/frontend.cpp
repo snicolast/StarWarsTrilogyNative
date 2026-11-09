@@ -491,9 +491,15 @@ std::vector<Frontend::Item> Frontend::items() const {
                      : (pad_prompts ? L"Found on this PC: A closes this game and starts it"
                                     : L"Found on this PC: ENTER closes this game and starts it"))},
                 {BACK, L"BACK", L"", L"Return to the main menu"}};
-    case Screen::Extra:
+    case Screen::Extra: {
+        // (being made: SWT_DOGFIGHT=1 opens what there is so far, a free flight)
+        static const bool preview = getenv("SWT_DOGFIGHT") != nullptr;
+        if (preview)
+            return {{DOGFIGHT, L"DOGFIGHT", L"PREVIEW", L"Free flight in an X-wing among ships standing still (in the making)"},
+                    {BACK, L"BACK", L"", L"Return to the mode select"}};
         return {{DOGFIGHT, L"DOGFIGHT", L"COMING SOON", L"An X-wing against TIE fighters: random encounters and objectives", false},
                 {BACK, L"BACK", L"", L"Return to the mode select"}};
+    }
     case Screen::Pause:
         return {{RESUME, L"RESUME", L"", L"Back to the game"},
                 {SETTINGS, L"SETTINGS", L"", L"Display, sound and controls"},
@@ -719,7 +725,7 @@ void Frontend::activate(const Item& it, int dir) {
         if (lw_exe_.empty()) open_lost_world_page();
         else play_lost_world();
         break;
-    case DOGFIGHT: break;   // not made yet (greyed out)
+    case DOGFIGHT: push(Action::StartDogfight); break;   // (greyed out unless SWT_DOGFIGHT is set)
     case BACK: back(); break;
     case RESUME: push(Action::Resume); break;
     case SETTINGS: options_from_pause_ = true; tab_ = 0; open(Screen::Options); break;

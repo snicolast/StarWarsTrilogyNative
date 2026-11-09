@@ -23,6 +23,7 @@
 #include "eeprom.h"
 #include "inputs.h"
 #include "fns.h"
+#include "../dogfight/dogfight.h"
 #include "runtime.h"
 #include "drive_board.h"
 #include "jtag.h"
@@ -1139,6 +1140,57 @@ static bool in_attract() {
     return mode == 0 || (seq != 2 && seq != 3 && mode >= 6);
 }
 
+// DOGFIGHT (src/dogfight): its frames, published as the game's are. The set
+// is the game's last frame (its Real3D memory: viewports, textures' places,
+// the star field); the scene is the simulation's
+static void dogfight_publish(double time) {
+    auto state = std::make_shared<R3DFrameState>();
+    state->time = state->flushed = time;
+    state->vblank = g_frame;
+    state->native = dogfight_scene();
+    state->frame = ++g_r3d_frames;
+    {
+        std::lock_guard<std::mutex> lock(g_r3d_mutex);
+        if (g_r3d_latest) state->pages = g_r3d_latest->pages;
+        g_r3d_latest = state;
+    }
+    g_r3d_cv.notify_all();
+}
+
+void dogfight_begin() {
+    dogfight_reset();
+    g_dogfight = 2;
+    dogfight_publish(qpc_seconds());
+    printf("[dogfight] flying (frame %llu, %d ships)\n", (unsigned long long)g_frame, dogfight_ships());
+    fflush(stdout);
+}
+
+void dogfight_run() {
+    const double tick = 1.0 / FRAME_HZ;
+    double next = qpc_seconds();
+    while (g_dogfight == 2 && !g_quit) {
+        if (g_hold) {   // the pause menu
+            Sleep(4);
+            next = qpc_seconds();
+            continue;
+        }
+        double now = qpc_seconds();
+        if (now < next) {
+            if (next - now > 0.002) Sleep(1);
+            continue;
+        }
+        if (now - next > 0.25) next = now;   // far behind (the window dragged): no catching up
+        dogfight_step(float(tick));
+        g_frame++;          // the vblank the 2D layers go by
+        video_snapshot();   // (blanked while flying: app.cpp, compose_2d)
+        dogfight_publish(next);
+        next += tick;
+        g_sound.run_frame(FRAME_HZ);   // the stage's music plays on
+    }
+    printf("[dogfight] left (frame %llu)\n", (unsigned long long)g_frame);
+    fflush(stdout);
+}
+
 static bool arcade_entry_frame() {
     static uint64_t from = 0, select_at = 0, settle = 0;
     PlayerInputs& p = g_inputs.p[0];
@@ -1181,7 +1233,7 @@ static bool arcade_entry_frame() {
     // 1-3: the credit taken, the SEGA logo or the game's start screens still
     // up. Done only at the mission select (4) or past it (a DEBUG jump); the
     // menu is never left over anything else, short of giving up
-    if (mode != 4 && !(g_debug_jump >= 0 && select_at) && g_frame - from < 9000) return false;
+    if (mode != 4 && !((g_debug_jump >= 0 || g_dogfight == 1) && select_at) && g_frame - from < 9000) return false;
     if (!select_at) {
         select_at = g_frame;
         printf("[play] mission select after %llu frames (mode %u)%s\n", (unsigned long long)(g_frame - from), unsigned(mode),
@@ -1189,6 +1241,24 @@ static bool arcade_entry_frame() {
     }
     if (g_frame - select_at < 20) return false;   // its first frames drawn
     if (g_debug_jump >= 0 && !debug_jump_frame(select_at)) return false;
+    // DOGFIGHT: the stage it flies over is Yavin's first phase, a second and
+    // a half into its play (everything of the phase loaded and drawn once)
+    if (g_dogfight == 1) {
+        static uint64_t playing_at = 0;
+        bool playing = rd32(0x2210E8) == 3 && int16_t(rd16(0x221136)) == 11;
+        if (!playing && g_frame - select_at < 6000) {
+            playing_at = 0;
+            return false;
+        }
+        if (!playing_at) playing_at = g_frame;
+        if (playing && g_frame - playing_at < 90) return false;
+        playing_at = 0;
+        if (playing) dogfight_begin();
+        else {
+            printf("[dogfight] the stage was not reached: given up\n");
+            g_dogfight = 0;
+        }
+    }
     g_arcade_entry = 0;
     settle = 0;
     return true;
@@ -1304,6 +1374,12 @@ void rt_event(Ctx& c) {
                 double hold_from = qpc_seconds();
                 while (g_hold && !g_quit && !g_boot_skip) Sleep(4);   // a skip run (PLAY, QUIT) goes on behind the menu
                 g_wait_seconds += qpc_seconds() - hold_from;
+                LARGE_INTEGER now;   // carry on at real speed from here, without catching up
+                QueryPerformanceCounter(&now);
+                g_start_time.QuadPart = now.QuadPart - LONGLONG(double(g_frame) / FRAME_HZ * double(g_qpf.QuadPart));
+            }
+            if (g_dogfight == 2 && !g_boot_skip) {   // DOGFIGHT: the game stands still while it is flown
+                dogfight_run();
                 LARGE_INTEGER now;   // carry on at real speed from here, without catching up
                 QueryPerformanceCounter(&now);
                 g_start_time.QuadPart = now.QuadPart - LONGLONG(double(g_frame) / FRAME_HZ * double(g_qpf.QuadPart));

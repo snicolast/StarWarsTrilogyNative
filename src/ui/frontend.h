@@ -86,7 +86,7 @@ class Frontend {
 public:
     enum class Screen { None, Splash, Main, Play, Options, Pause, Records, Debug, Extra, More };
     enum class Action { None, StartArcade, Resume, Quit, ToggleFullscreen, SettingsChanged,
-                        QuitToMenu, StartDebug };
+                        QuitToMenu, StartDebug, StartDogfight };
 
     bool init(const std::string& font_dir);
     void shutdown();

@@ -41,6 +41,7 @@
 #include "../ui/achievement_toast.h"
 #include "../ui/frontend.h"
 #include "../ui/menu_music.h"
+#include "../dogfight/dogfight.h"
 #include "../video/r3d_catalog.h"
 #include "../video/pack2d.h"
 #include "../video/r3d_explosions.h"
@@ -668,6 +669,13 @@ int main(int argc, char** argv) {
         out.overlay_brightness = float(offset[0] + offset[1] + offset[2]) / (3 * 255.0f);
         out.overlays = pack2d.take_new_images();
         for (auto& img : pack2d_back.take_new_images()) out.overlays.push_back(std::move(img));
+        if (g_dogfight == 2) {   // DOGFIGHT: the stage's own 2D (its HUD) is not shown
+            std::fill(out.back.begin(), out.back.end(), 0u);
+            std::fill(out.front.begin(), out.front.end(), 0u);
+            std::fill(out.text_cells.begin(), out.text_cells.end(), 0u);
+            out.hud_band = false;
+            out.overlays.clear();
+        }
     };
     // Hands composed 2D layers to the renderer (their new pictures go separately)
     auto apply_2d = [&](const Layers2D& l) {
@@ -896,8 +904,15 @@ int main(int argc, char** argv) {
                     close_menu();
                     break;
                 case Frontend::Action::StartDebug:   // DEBUG: a phase of a stage (runtime.cpp, debug_jump_frame)
+                case Frontend::Action::StartDogfight:   // DOGFIGHT: Yavin's first phase as its stage (src/dogfight)
                     if (!kAnalogJoystick) break;
-                    g_debug_jump = frontend.debug_choice;
+                    if (a == Frontend::Action::StartDogfight) {
+                        g_debug_jump = 0;
+                        g_dogfight = 1;
+                    } else {
+                        g_debug_jump = frontend.debug_choice;
+                        g_dogfight = 0;
+                    }
                     if (!arcade_entered) {
                         arcade_join = 1;
                     } else if (!g_arcade_entry) {   // a game on: over at once, and on from the mission select
@@ -911,6 +926,7 @@ int main(int argc, char** argv) {
                     frontend.invalidate();
                     break;
                 case Frontend::Action::QuitToMenu:   // the game over and back to the mission select, unseen (runtime.cpp)
+                    g_dogfight = 0;   // (DOGFIGHT: the game it stood on goes on, to its end, unseen)
                     arcade_join = 0;
                     g_arcade_entry = 3;
                     g_boot_skip = g_fast_idle = true;
@@ -1108,7 +1124,8 @@ int main(int argc, char** argv) {
         for (int p = 0; p < 2; p++) {   // player 2's only while that gun is in use
             PlayerAim aim = player_aim(p);
             bool used = p == 0 || g_inputs.p[1].playing;
-            renderer.set_crosshair(p, !kAnalogJoystick && g_opt.show_crosshair && used && aim.inside && !g_opt.fixed_aim, aim.x, aim.y);
+            if (g_dogfight == 2) renderer.set_crosshair(p, p == 0, 0.5f, 0.5f);   // DOGFIGHT: where the nose points
+            else renderer.set_crosshair(p, !kAnalogJoystick && g_opt.show_crosshair && used && aim.inside && !g_opt.fixed_aim, aim.x, aim.y);
         }
         // The 3D frame to draw. While interpolating, the picture shows the game
         // as it was at `shown_time`: a frame period plus the frames' lateness

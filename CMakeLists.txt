@@ -181,6 +181,7 @@ add_executable(StarWarsTrilogy
     src/runtime/gamepad.cpp
     src/runtime/scsi53c810.cpp
     src/runtime/stats.cpp
+    src/dogfight/dogfight.cpp
     src/ui/achievement_toast.cpp
     src/runtime/options.cpp
     src/runtime/rom_zip.cpp
@@ -281,7 +282,8 @@ if(LW_TESTS)
     add_executable(jtag_test tests/jtag_test.cpp src/runtime/jtag.cpp)
     add_executable(r3d_state_test tests/r3d_state_test.cpp)
     add_executable(news_test tests/news_test.cpp src/ui/news.cpp)
-    foreach(t tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test)
+    add_executable(dogfight_test tests/dogfight_test.cpp src/dogfight/dogfight.cpp)
+    foreach(t tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test dogfight_test)
         target_include_directories(${t} PRIVATE src/video src/common src/runtime src/audio src/ui ${MINIZ_DIR})
         if(MSVC)
             target_compile_options(${t} PRIVATE /W4 /utf-8)
@@ -300,6 +302,7 @@ if(LW_TESTS)
     add_test(NAME jtag COMMAND jtag_test)
     add_test(NAME r3d_state COMMAND r3d_state_test)
     add_test(NAME news COMMAND news_test)
+    add_test(NAME dogfight COMMAND dogfight_test)
     # 3.10: the version the tools need, so an older Python in PATH is skipped (issue #51)
     find_package(Python3 3.10 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
