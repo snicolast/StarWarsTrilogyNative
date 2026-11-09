@@ -768,9 +768,9 @@ int main(int argc, char** argv) {
                 prep_us += uint64_t(took * 1e6);
                 prep_frames++;
                 const float* st = builder.stage_ms();
-                frame_log("R %llu %.6f %.3f %.3f  nodes %.2f track %.2f screen %.2f pack %.2f pair %.2f  polys %zu\n",
+                frame_log("R %llu %.6f %.3f %.3f  nodes %.2f track %.2f screen %.2f pack %.2f pair %.2f  polys %zu  moving %zu of %zu\n",
                           (unsigned long long)state->frame, qpc_seconds(), (built_at - from) * 1000, took * 1000, st[0],
-                          st[1], st[2], st[3], st[4], p->scene.polygons);
+                          st[1], st[2], st[3], st[4], p->scene.polygons, p->scene.moving, p->scene.vertices.size());
                 pictures.overlays.swap(p->layers.overlays);
                 pictures.sky.swap(p->layers.sky_pictures);
                 p->layers.overlays.clear();
