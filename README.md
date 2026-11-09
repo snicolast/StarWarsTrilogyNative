@@ -66,7 +66,7 @@ On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by c
 <details>
 <summary>Manual install</summary>
 
-Install [Python 3](https://www.python.org/downloads/) and
+Install [Python 3.10 or later](https://www.python.org/downloads/) and
 [Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
 with the *Desktop development with C++* workload. The full workload is over 6 GB; the build only
 needs the MSVC compiler, CMake and a Windows SDK. In a command prompt:
