@@ -111,7 +111,7 @@ constexpr float SPEED_MIN = 20, SPEED_MAX = 160;
 constexpr float TURN_RATE = 1.1f, ROLL_RATE = 2.2f;   // radians per second at the stick's end
 // The cannons: one of the four every RELOAD seconds, in turn, their bolts
 // meeting CONVERGE ahead of the nose
-constexpr float BOLT_SPEED = 1400, BOLT_LIFE = 1.6f, BOLT_LENGTH = 16, RELOAD = 0.11f, CONVERGE = 450;
+constexpr float BOLT_SPEED = 1400, BOLT_LIFE = 1.6f, BOLT_LENGTH = 42, RELOAD = 0.11f, CONVERGE = 450;
 
 uint32_t g_seed = 0x5EED1234;
 float rnd(float lo, float hi) {

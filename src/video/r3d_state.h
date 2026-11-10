@@ -36,12 +36,12 @@ struct R3DNativeScene {
         uint32_t key = 0;          // the same from frame to frame (interpolation)
     };
     std::vector<Item> items;
-    // Streaks of light in the world (cannon bolts): from a to b, as wide as
-    // said, glowing in their colour round a white-hot middle
+    // Streaks of light in the world (cannon bolts): from a to its point at b,
+    // as wide as said, in their colour with a yellow line along the middle
     struct Beam {
         float a[3] = {}, b[3] = {};
-        float width = 0.7f;
-        uint32_t color = 0xFF3040FFu;   // RGBA8, R in the low byte
+        float width = 1.6f;
+        uint32_t color = 0xFF1E14FFu;   // RGBA8, R in the low byte (the red of the game's bolts)
         uint32_t key = 0;               // the same from frame to frame
     };
     std::vector<Beam> beams;

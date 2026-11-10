@@ -587,9 +587,8 @@ void R3DSceneBuilder::native_items() {
     }
     node_key_ = saved;
 
-    // Its streaks of light: each a strip facing the eye, a wide one in its
-    // colour and a narrow white-hot one inside it, in the translucent list
-    // (they cast no shadows). Never thinner than about a pixel and a half
+    // Its streaks of light: each a strip facing the eye in the translucent
+    // list (they cast no shadows), never thinner than a couple of pixels
     auto to_view = [](const float* t, const float* q, float* o) {
         for (int r = 0; r < 3; r++) o[r] = t[r] * q[0] + t[4 + r] * q[1] + t[8 + r] * q[2] + t[12 + r];
     };
@@ -603,23 +602,31 @@ void R3DSceneBuilder::native_items() {
         float len = std::sqrt(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
         if (len < 1e-6f) side[0] = 1, side[1] = side[2] = 0, len = 1;
         float dist = std::sqrt(mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]);
-        for (int layer = 0; layer < 2; layer++) {
-            float half = std::max(beam.width, 0.0016f * dist) * (layer ? 0.2f : 0.5f) / len;
-            R3DVertex q[4] = {};
-            const float* end[4] = {a, b, b, a};
-            const float sign[4] = {-1, -1, 1, 1};
-            for (int k = 0; k < 4; k++) {
-                for (int c = 0; c < 3; c++) q[k].pos[c] = q[k].prev[c] = end[k][c] + side[c] * half * sign[k];
-                q[k].nrm[2] = 1;
-                q[k].color = layer ? 0xFFFFFFFFu : (beam.color & 0x00FFFFFFu) | 0xB0000000u;
-                q[k].flags = R3D_LUMINOUS;
-            }
-            static const int order[6] = {0, 1, 2, 0, 2, 3};
-            for (int k = 0; k < 6; k++) {
-                trans_.push_back(q[order[k]]);
-                // (a key of its own: the next frame finds where each corner was)
-                trans_keys_.push_back(0xBEA3000000000000ull | uint64_t(beam.key) << 8 | uint64_t(layer * 6 + k));
-            }
+        // As the game draws its own bolts: a solid body in its colour ending
+        // in a point, and a thin yellow line along its middle
+        const float wide = std::max(beam.width, 0.0026f * dist) * 0.5f / len;
+        float neck[3];   // where the point begins
+        for (int c = 0; c < 3; c++) neck[c] = b[c] - d[c] * 0.1f;
+        auto corner = [&](const float* at, float off, uint32_t color) {
+            R3DVertex q{};
+            for (int c = 0; c < 3; c++) q.pos[c] = q.prev[c] = at[c] + side[c] * off;
+            q.nrm[2] = 1;
+            q.color = color;
+            q.flags = R3D_LUMINOUS;
+            return q;
+        };
+        const uint32_t body = beam.color | 0xFF000000u, line = 0xFF50E6FFu;
+        const R3DVertex strip[15] = {
+            corner(a, -wide, body), corner(neck, -wide, body), corner(neck, wide, body),
+            corner(a, -wide, body), corner(neck, wide, body), corner(a, wide, body),
+            corner(neck, -wide, body), corner(b, 0, body), corner(neck, wide, body),
+            corner(a, -wide * 0.12f, line), corner(b, -wide * 0.12f, line), corner(b, wide * 0.12f, line),
+            corner(a, -wide * 0.12f, line), corner(b, wide * 0.12f, line), corner(a, wide * 0.12f, line),
+        };
+        for (int k = 0; k < 15; k++) {
+            trans_.push_back(strip[k]);
+            // (a key of its own: the next frame finds where each corner was)
+            trans_keys_.push_back(0xBEA3000000000000ull | uint64_t(beam.key) << 8 | uint64_t(k));
         }
     }
     // Its explosions, for r3d_swt_explosions: where each is in this view and
