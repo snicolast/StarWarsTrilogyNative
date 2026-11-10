@@ -53,10 +53,10 @@ struct Shape {
     uint32_t models[4];
     int count;
     float radius;   // the model's (out/model_catalog.txt)
-    int hits;       // cannon hits it takes (0: it only sparks)
+    int hits;       // hits it takes from the other side (0: it only sparks); the player's own shots only spark on friends
 };
-const Shape XWING{{0xEE9EB4, 0xEEC840, 0xEE1A15}, 3, 7.2f, 0};
-const Shape YWING{{0xEEF1E4}, 1, 9.0f, 0};
+const Shape XWING{{0xEE9EB4, 0xEEC840, 0xEE1A15}, 3, 7.2f, 5};
+const Shape YWING{{0xEEF1E4}, 1, 9.0f, 7};
 const Shape TIE{{0xEDB841}, 1, 5.2f, 2};
 const Shape TIE_ADVANCED{{0xEBA43F}, 1, 4.7f, 3};
 const Shape FALCON{{0xF0B18D}, 1, 16.1f, 0};
@@ -83,8 +83,14 @@ struct Ship {
         bool engaged = false; // one of the few that attack at a time
         bool passer = false;  // of those, the one that makes passes (the other goes for the tail)
         float fooled = 0;     // seconds until a hard turn of the player's can shake it off again
+        uint32_t prey = 0;    // the ship it goes for (0: the player, for an enemy; none, for a friend)
+        float bored = 0;      // seconds until it thinks again about which
+        bool chased = false;  // someone has it in their sights
     } ai;
 };
+
+bool foe(const Ship& ship) { return ship.shape == &TIE || ship.shape == &TIE_ADVANCED; }
+bool friendly(const Ship& ship) { return ship.shape == &XWING || ship.shape == &YWING || ship.shape == &FALCON; }
 
 // A cannon bolt: a short streak flying straight
 struct Bolt {
@@ -181,6 +187,8 @@ void reset() {
     add(XWING, {30, -3, 60}, Frame{});
     add(YWING, {-55, 12, 20}, Frame{});
     add(FALCON, {70, 18, 140}, facing(-0.15f, 0, 0.1f));
+    for (Ship& ship : g_sim.ships)
+        if (friendly(ship)) ship.speed = g_ai ? 100.0f : 0.0f, ship.ai.skill = rnd(0.45f, 0.85f);
     // TIE fighters between here and the capital ships, turned every way
     for (int i = 0; i < 14; i++) {
         Vec p{rnd(-500, 500), rnd(-220, 220), rnd(250, 2600)};
@@ -193,7 +201,6 @@ void reset() {
     g_shown_ships = int(g_sim.ships.size()), g_shown_kills = 0;
 }
 
-bool foe(const Ship& ship) { return ship.shape == &TIE || ship.shape == &TIE_ADVANCED; }
 
 void blast(Sim& s, Vec pos, float radius) {
     if (s.blasts.size() >= 16) s.blasts.erase(s.blasts.begin());
@@ -236,35 +243,43 @@ void cannons(Sim& s, bool fire, float dt) {
         int steps = std::max(1, int(len / 4.0f) + 1);
         for (int i = 1; i <= steps && b.life > 0; i++) {
             Vec p = b.pos + move * (float(i) / float(steps));
-            if (b.foe) {   // an enemy's: the player's ship alone, a ball about it
+            if (b.foe) {   // an enemy's: the player's ship, a ball about it, or a friend
                 Vec d = p + s.pos * -1;
-                if (dot(d, d) > 5.0f * 5.0f) continue;
-                b.life = 0;
-                s.shield -= HIT;
-                s.unhurt = 0;
-                s.hitter = b.owner, s.hit_time = s.time;
-                s.threat = b.owner, s.threat_hold = 0;   // whoever hits is the one to worry about, at once
-                s.sounds |= DOGFIGHT_SOUND_HURT;
-                // (the cockpit is thrown about)
-                s.sway[0] += rnd(-0.02f, 0.02f), s.sway[2] += rnd(-0.05f, 0.05f), s.sway[5] -= 0.012f;
-                break;
+                if (dot(d, d) <= 5.0f * 5.0f) {
+                    b.life = 0;
+                    s.shield -= HIT;
+                    s.unhurt = 0;
+                    s.hitter = b.owner, s.hit_time = s.time;
+                    s.threat = b.owner, s.threat_hold = 0;   // whoever hits is the one to worry about, at once
+                    s.sounds |= DOGFIGHT_SOUND_HURT;
+                    // (the cockpit is thrown about)
+                    s.sway[0] += rnd(-0.02f, 0.02f), s.sway[2] += rnd(-0.05f, 0.05f), s.sway[5] -= 0.012f;
+                    break;
+                }
             }
             for (size_t k = 0; k < s.ships.size(); k++) {
                 Ship& ship = s.ships[k];
+                // Each side's pilots hit the other's fighters alone; the player's shots strike anything
+                if (b.foe ? !friendly(ship) : b.owner && !foe(ship)) continue;
                 // (far ones are skipped by a ball about them first)
                 Vec d = p + ship.pos * -1;
                 float reach = ship.shape->radius * 1.7f;
                 if (dot(d, d) > reach * reach || !inside(ship, p)) continue;
                 b.life = 0;
-                if (ship.shape->hits && ++ship.hits >= ship.shape->hits) {
+                const bool mine = !b.foe && !b.owner;   // the player's own
+                Vec away = ship.pos + s.pos * -1;
+                const bool heard = mine || dot(away, away) < 1200.0f * 1200.0f;
+                if (ship.shape->hits && (!mine || foe(ship)) && ++ship.hits >= ship.shape->hits) {
                     blast(s, ship.pos, ship.shape->radius * 2.2f);
                     if (ship.id == s.target) s.target = 0;
+                    // (a friend shot down the one that was after the player)
+                    if (!mine && foe(ship) && ship.id == s.threat) s.sounds |= DOGFIGHT_SOUND_SAVED;
                     s.ships.erase(s.ships.begin() + long(k));
-                    s.kills++;
-                    s.sounds |= DOGFIGHT_SOUND_KILL;
+                    if (mine) s.kills++;
+                    if (heard) s.sounds |= DOGFIGHT_SOUND_KILL;
                 } else {
                     blast(s, p + unit(b.vel) * -1.5f, ship.shape == &DESTROYER ? 6.0f : 2.5f);
-                    s.sounds |= ship.shape->hits ? DOGFIGHT_SOUND_DAMAGE : DOGFIGHT_SOUND_HIT;
+                    if (heard) s.sounds |= ship.shape->hits && (!mine || foe(ship)) ? DOGFIGHT_SOUND_DAMAGE : DOGFIGHT_SOUND_HIT;
                 }
                 break;
             }
@@ -294,9 +309,12 @@ void lock(Sim& s) {
 // breaks away when it comes too near, and jinks when the player sits on its
 // own tail. `manoeuvre`: how hard the player is turning, 0..1
 void pilots(Sim& s, float manoeuvre, float dt) {
-    // Who attacks: the nearest few
+    // Who attacks the player: the nearest few enemies
     std::vector<std::pair<float, Ship*>> foes;
+    int friends = 0;
     for (Ship& ship : s.ships) {
+        friends += ship.shape == &XWING || ship.shape == &YWING;
+        ship.ai.chased = false;
         if (!foe(ship)) continue;
         Vec d = ship.pos + s.pos * -1;
         // (one already attacking counts as nearer: they do not swap at every turn)
@@ -307,78 +325,149 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         foes[i].second->ai.engaged = i < size_t(ATTACKERS);
         foes[i].second->ai.passer = i == 1;
     }
+    auto find = [&](uint32_t id) -> Ship* {
+        for (Ship& ship : s.ships)
+            if (id && ship.id == id) return &ship;
+        return nullptr;
+    };
+    // Whom each of the others goes for: an enemy that is not on the player,
+    // the nearest friend; a friend, the nearest enemy (fewer on the same
+    // one), and the first of them the one that is after the player. They
+    // think again every few seconds
+    bool wingman = true;
+    for (Ship& ship : s.ships) {
+        Ship::Pilot& ai = ship.ai;
+        const bool enemy = foe(ship);
+        if (!enemy && !friendly(ship)) continue;
+        ai.bored -= dt;
+        Ship* prey = find(ai.prey);
+        if (enemy && ai.engaged) {
+            ai.prey = 0;
+            continue;
+        }
+        if (!enemy && wingman && ship.shape == &XWING) {
+            wingman = false;
+            if (Ship* threat = find(s.threat)) {
+                ai.prey = threat->id;
+                continue;
+            }
+        }
+        if (prey && ai.bored > 0) continue;
+        ai.bored = rnd(4, 8);
+        float best = 1e30f;
+        ai.prey = 0;
+        for (Ship& other : s.ships) {
+            if (enemy ? !(other.shape == &XWING || other.shape == &YWING) : !foe(other)) continue;
+            Vec d = other.pos + ship.pos * -1;
+            float far = dot(d, d);
+            for (const Ship& rival : s.ships)
+                if (&rival != &ship && rival.ai.prey == other.id && foe(rival) == enemy) far *= 3;   // (taken: farther, as it were)
+            if (far < best) best = far, ai.prey = other.id;
+        }
+    }
+    // Who is in someone's sights (it will not sit still for that)
+    for (Ship& ship : s.ships)
+        if (ship.ai.aimed > 0.3f)
+            if (Ship* prey = find(ship.ai.prey)) prey->ai.chased = true;
     // A hard turn held a moment shakes off the one on the tail, if its pilot is taken in
     s.hard = manoeuvre >= 0.85f ? s.hard + dt : 0;
     const bool shake = s.hard >= (s.drifting ? 0.25f : 0.6f) && !(s.shaken) ;
     s.shaken = s.hard > 0 ? s.shaken || shake : false;
-    const Vec player_vel = s.at.fwd * s.speed;
     s.warning = false;
     for (Ship& ship : s.ships) {
-        if (!foe(ship)) continue;
+        const bool enemy = foe(ship);
+        if (!enemy && !friendly(ship)) continue;
         Ship::Pilot& ai = ship.ai;
-        Vec to = s.pos + ship.pos * -1;
+        // What it goes for: the player, or another ship; none: an enemy
+        // circles the player, a friend flies beside the player
+        const Ship* prey = find(ai.prey);
+        const bool on_player = enemy && ai.engaged;
+        const bool hunting = on_player || prey;
+        Vec quarry = s.pos, quarry_fwd = s.at.fwd;
+        float quarry_speed = s.speed;
+        if (prey) quarry = prey->pos, quarry_fwd = prey->at.fwd, quarry_speed = prey->speed;
+        Vec to = quarry + ship.pos * -1;
         float dist = std::max(std::sqrt(dot(to, to)), 1e-3f);
         Vec dir = to * (1 / dist);
-        // Where a bolt fired now would meet the player
-        Vec lead = s.pos + player_vel * (dist / TIE_BOLT);
+        // Where a bolt fired now would meet it
+        Vec lead = quarry + quarry_fwd * (quarry_speed * dist / TIE_BOLT);
+        // Each kind's best: the X-wing as the player's, the Y-wing heavy, the Falcon between
+        const float top = enemy ? TIE_MAX : ship.shape == &YWING ? 115.0f : 145.0f;
+        const float rate = enemy ? TIE_TURN : ship.shape == &YWING ? 0.8f : ship.shape == &FALCON ? 0.95f : 1.1f;
         Vec want = dir;
-        float want_speed = TIE_MAX;
+        float want_speed = top;
         bool fire = false;
 
         ai.timer -= dt, ai.fooled -= dt;
         if (ai.mode != Ship::Pilot::CHASE && ai.timer <= 0) ai.mode = Ship::Pilot::CHASE;
-        if (shake && ai.mode == Ship::Pilot::CHASE && ai.engaged && ai.fooled <= 0 && dist < 450 && dot(dir, s.at.fwd) > 0.5f) {
+        auto aside = [&](float ahead) {
+            Vec side = cross(dir, ship.at.down) * (rnd(-1, 1) < 0 ? -1.0f : 1.0f) + ship.at.down * rnd(-0.6f, 0.6f);
+            return unit(ship.at.fwd * ahead + side);
+        };
+        if (shake && on_player && ai.mode == Ship::Pilot::CHASE && ai.fooled <= 0 && dist < 450 && dot(dir, s.at.fwd) > 0.5f) {
             ai.fooled = 6;
             if (rnd(0, 1) < 0.9f - 0.55f * ai.skill) {   // it flies on past the turn, and has to come round again
                 ai.mode = Ship::Pilot::OVERSHOOT, ai.timer = rnd(2.5f, 3.5f), ai.way = ship.at.fwd;
                 ai.aimed = 0, ai.burst = 0;
             } else {   // not taken in: it breaks to a side instead of flying past
-                ai.mode = Ship::Pilot::BREAK, ai.timer = rnd(1.5f, 2.5f);
-                Vec side = cross(dir, ship.at.down) * (rnd(-1, 1) < 0 ? -1.0f : 1.0f) + ship.at.down * rnd(-0.6f, 0.6f);
-                ai.way = unit(ship.at.fwd * 0.5f + side);
+                ai.mode = Ship::Pilot::BREAK, ai.timer = rnd(1.5f, 2.5f), ai.way = aside(0.5f);
             }
         }
+        // The one whose line of fire it should get out of: the player, behind
+        // an enemy, pointing at it, near; or whoever has it in their sights
+        Vec danger = dir * -1;
+        bool hunted = ai.chased;
+        if (enemy) {
+            Vec from = ship.pos + s.pos * -1;
+            float far = std::max(std::sqrt(dot(from, from)), 1e-3f);
+            if (dot(s.at.fwd, from) > 0.985f * far && far < 700 && dot(ship.at.fwd, from) > -0.3f * far) hunted = true, danger = from * (1 / far);
+        }
         if (ai.mode == Ship::Pilot::CHASE) {
-            // The player behind it, pointing at it, near: it will not sit still for that
-            bool hunted = dot(s.at.fwd, dir * -1) > 0.985f && dist < 700 && dot(ship.at.fwd, dir) < 0.3f;
             ai.dread = hunted ? ai.dread + dt : 0;
             if (ai.dread > 0.9f - 0.5f * ai.skill) {
                 ai.mode = Ship::Pilot::EVADE, ai.timer = rnd(1.5f, 3.0f), ai.jink = 0, ai.dread = 0;
-            } else if (dist < (ai.passer ? 150 : 80)) {
+            } else if (hunting && dist < (ai.passer && on_player ? 150 : 80)) {
                 // Too near (or its pass made): away to a side, and round again
-                ai.mode = Ship::Pilot::BREAK, ai.timer = ai.passer ? rnd(4.0f, 6.0f) : rnd(2.0f, 3.5f);
-                Vec side = cross(dir, ship.at.down) * (rnd(-1, 1) < 0 ? -1.0f : 1.0f) + ship.at.down * rnd(-0.6f, 0.6f);
-                ai.way = unit(ship.at.fwd * 0.6f + side);
+                ai.mode = Ship::Pilot::BREAK, ai.timer = ai.passer && on_player ? rnd(4.0f, 6.0f) : rnd(2.0f, 3.5f), ai.way = aside(0.6f);
             }
         }
         if (ai.mode == Ship::Pilot::BREAK || ai.mode == Ship::Pilot::OVERSHOOT) {
             want = ai.way;
         } else if (ai.mode == Ship::Pilot::EVADE) {
             ai.jink -= dt;
-            if (ai.jink <= 0) {   // a new way across the player's line of fire
+            if (ai.jink <= 0) {   // a new way across the line of fire
                 ai.jink = rnd(0.5f, 1.1f);
                 Vec r{rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)};
-                ai.way = unit(r + dir * -dot(r, dir) + ship.at.fwd * 0.3f);
+                ai.way = unit(r + danger * -dot(r, danger) + ship.at.fwd * 0.3f);
             }
             want = ai.way;
-        } else if (ai.engaged) {
-            // How far round the player's tail it is: 1 right behind it
-            float behind = std::clamp(dot(dir, s.at.fwd), 0.0f, 1.0f);
-            Vec tail = s.pos + s.at.fwd * -150.0f;
-            float w = ai.passer ? 1.0f : std::clamp((behind - 0.3f) / 0.4f, 0.0f, 1.0f);   // (the one that makes passes comes straight in)
+        } else if (hunting) {
+            // How far round its tail it is: 1 right behind it
+            float behind = std::clamp(dot(dir, quarry_fwd), 0.0f, 1.0f);
+            Vec tail = quarry + quarry_fwd * -150.0f;
+            float w = ai.passer && on_player ? 1.0f : std::clamp((behind - 0.3f) / 0.4f, 0.0f, 1.0f);   // (the one that makes passes comes straight in)
             want = unit(tail + (lead + tail * -1) * w + ship.pos * -1);
-            // Fast to get there; behind the player, the player's speed and a little more while far
-            if (dist < 500) want_speed = behind > 0.6f ? s.speed + (dist - 200) * 0.3f : TIE_MAX * 0.8f;
+            // Fast to get there; behind it, its speed and a little more while far
+            if (dist < 500) want_speed = behind > 0.6f ? quarry_speed + (dist - 200) * 0.3f : top * 0.8f;
             bool sighted = dot(ship.at.fwd, unit(lead + ship.pos * -1)) > 0.9976f && dist < 800;   // 4 degrees
             ai.aimed = sighted ? ai.aimed + dt : 0;
             fire = ai.aimed > 0.9f - 0.5f * ai.skill;
-            s.warning |= sighted && ai.aimed > 0.3f;
-        } else {
+            if (on_player) s.warning |= sighted && ai.aimed > 0.3f;
+        } else if (enemy) {
             // Waiting its turn: round the player at a distance, each on its own side
             float a = float(ship.id) * 2.4f + float(s.time) * 0.05f;
             Vec at = s.pos + Vec{std::cos(a) * 800, std::sin(float(ship.id)) * 250, std::sin(a) * 800};
             want = unit(at + ship.pos * -1);
-            want_speed = TIE_MAX * 0.7f;
+            want_speed = top * 0.7f;
+            ai.aimed = 0;
+        } else {
+            // No enemy to go for: beside the player, each in its own place
+            float side = (ship.id & 1 ? 1.0f : -1.0f) * (40.0f + 25.0f * float(ship.id % 3));
+            Vec at = s.pos + s.at.right * side + s.at.down * (8.0f * float(ship.id % 4) - 12.0f) + s.at.fwd * (80.0f + s.speed * 1.5f);
+            Vec gap = at + ship.pos * -1;
+            float far = std::sqrt(dot(gap, gap));
+            want = unit(unit(gap) * std::min(1.0f, far / 150.0f) + s.at.fwd * std::max(0.0f, 1 - far / 150.0f) + s.at.fwd * 0.2f);
+            want_speed = s.speed + std::clamp(dot(gap, s.at.fwd) * 0.4f, -40.0f, 60.0f);
             ai.aimed = 0;
         }
         // Clear of the capital ships
@@ -389,7 +478,7 @@ void pilots(Sim& s, float manoeuvre, float dt) {
             if (near < 1) want = unit(want + unit(v) * (0.3f + 2.0f * (1 - near)));
         }
         // The nose towards it, no faster than it can turn; the wings bank into the turn
-        const float turn = TIE_TURN * (0.75f + 0.25f * ai.skill) * dt;
+        const float turn = rate * (0.75f + 0.25f * ai.skill) * dt;
         Vec f = ship.at.fwd, nose = want;
         float c = std::clamp(dot(f, want), -1.0f, 1.0f);
         if (std::acos(c) > turn) {
@@ -402,7 +491,7 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         ship.at.fwd = nose;
         ship.at.right = unit(cross(down, nose));
         ship.at.down = cross(nose, ship.at.right);
-        ship.speed += (std::clamp(want_speed, TIE_MIN, TIE_MAX) - ship.speed) * std::min(1.0f, 1.2f * dt);
+        ship.speed += (std::clamp(want_speed, TIE_MIN, top) - ship.speed) * std::min(1.0f, 1.2f * dt);
         ship.pos = ship.pos + nose * (ship.speed * dt);
 
         // Its cannons: a burst, then a pause
@@ -413,17 +502,15 @@ void pilots(Sim& s, float manoeuvre, float dt) {
             if (--ai.burst == 0) {
                 ai.pause = rnd(2.0f, 4.0f) - ai.skill;
                 // Its burst fired, it swings away and has to line up again
-                if (ai.mode == Ship::Pilot::CHASE) {
-                    ai.mode = Ship::Pilot::BREAK, ai.timer = rnd(2.5f, 4.0f) - ai.skill;
-                    Vec side = cross(dir, ship.at.down) * (rnd(-1, 1) < 0 ? -1.0f : 1.0f) + ship.at.down * rnd(-0.6f, 0.6f);
-                    ai.way = unit(ship.at.fwd * 0.5f + side);
-                }
+                if (ai.mode == Ship::Pilot::CHASE) ai.mode = Ship::Pilot::BREAK, ai.timer = rnd(2.5f, 4.0f) - ai.skill, ai.way = aside(0.5f);
             }
-            float spread = (0.040f + 0.060f * manoeuvre) * (1.5f - ai.skill);
-            Vec from = ship.pos + nose * 6.0f;
+            // (the friends shoot worse than they might: the kills are for the player to make)
+            float spread = (0.040f + 0.060f * (on_player ? manoeuvre : 0.3f)) * (1.5f - ai.skill) * (enemy ? 1.0f : 2.2f);
+            Vec from = ship.pos + nose * (ship.shape->radius + 1.5f);
             Vec aim = unit(unit(lead + from * -1) + Vec{rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)} * spread);
-            s.bolts.push_back({from, aim * TIE_BOLT, 2.0f, 0, s.next_id++, true, ship.id});
-            s.sounds |= DOGFIGHT_SOUND_TIE;
+            s.bolts.push_back({from, aim * TIE_BOLT, 2.0f, 0, s.next_id++, enemy, ship.id});
+            Vec away = ship.pos + s.pos * -1;
+            if (enemy && (on_player || dot(away, away) < 900.0f * 900.0f)) s.sounds |= DOGFIGHT_SOUND_TIE;
         }
     }
     // The one to worry about: the nearest of those aiming or firing, or the
@@ -452,8 +539,17 @@ void pilots(Sim& s, float manoeuvre, float dt) {
             s.threat_hold = 0;
         }
     }
+    // More friends when few are left: two X-wings from behind the player
+    if (friends < 2) {
+        for (int i = 0; i < 2; i++) {
+            Ship wing{&XWING, s.pos + s.at.fwd * -rnd(1800, 2400) + s.at.right * (i ? 120.0f : -120.0f), s.at, s.next_id++, 0, 0, {}};
+            wing.ai.skill = rnd(0.45f, 0.85f);
+            wing.speed = 140;
+            s.ships.push_back(wing);
+        }
+    }
     // More of them when few are left: from far off, any side
-    if (foes.size() < 3) {
+    if (foes.size() < 6) {
         Vec r = unit(Vec{rnd(-1, 1), rnd(-0.3f, 0.3f), rnd(-1, 1)});
         for (int i = 0; i < 3; i++) {
             Ship tie{i == 2 ? &TIE_ADVANCED : &TIE, s.pos + r * rnd(2500, 3200) + Vec{rnd(-150, 150), rnd(-150, 150), rnd(-150, 150)}, Frame{}, s.next_id++, 0, 0, {}};
