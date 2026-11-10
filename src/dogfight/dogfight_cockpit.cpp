@@ -649,8 +649,10 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     // A friend's line takes the row for a moment (the game's own words, as far as the letters go)
     const bool blink = std::fmod(time, 0.3) < 0.18;
     const int message = dogfight_message();
-    if (message) {
-        const char* words = message == DOGFIGHT_VOICE_THANKS ? "THAT WAS CLOSE" : message == DOGFIGHT_VOICE_CHEER ? "THATS IT" :
+    const int result = dogfight_result();
+    if (message || result) {
+        // (how the match went comes before anything said)
+        const char* words = result == DOGFIGHT_VICTORY ? "VICTORY" : result == DOGFIGHT_DEFEAT ? "DEFEATED" : message == DOGFIGHT_VOICE_THANKS ? "THAT WAS CLOSE" : message == DOGFIGHT_VOICE_CHEER ? "THATS IT" :
                             message == DOGFIGHT_VOICE_HELP ? "CANT SHAKE HIM" : "TAIL CLEAR";
         float width = 6 * float(strlen(words)) - 1, size = width > wide ? 1 : std::min(2.0f, std::floor(wide / width));
         d.text(x + (wide - width * size) * 0.5f, size > 1 ? 54 : 58, words, YELLOW, size);
@@ -660,13 +662,16 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
         else snprintf(number, sizeof(number), "-----");
         d.text(x + wide - 60, 54, number, YELLOW, 2);
         // Under the word: a warning while an enemy has the ship in its sights, or the kills
-        if (dogfight_downed()) {
-            if (blink) d.text(x, 63, "DOWN", YELLOW);
-        } else if (dogfight_warning()) {
+        // ... and under them its shield: four pips, the ones it has left lit
+        if (const float theirs = dogfight_target_shield(); theirs >= 0)
+            for (int k = 0; k < 4; k++) d.box(x + wide - 60 + 15.0f * k, 68.6f, x + wide - 60 + 15.0f * k + 12, 70.2f, theirs * 4 - 0.01f > k ? YELLOW : DIM, 2);
+        // Under the word: a warning while an enemy has the ship in its sights,
+        // or the fighters left on each side (the friends', the player among them, first)
+        if (dogfight_warning()) {
             if (blink) d.text(x, 63, "WARN", YELLOW);
-        } else if (dogfight_kills() > 0) {
-            snprintf(number, sizeof(number), "K %d", dogfight_kills());
-            d.text(x, 63, number, YELLOW);
+        } else {
+            snprintf(number, sizeof(number), "%d V %d", dogfight_left(false), dogfight_left(true));
+            d.text(x, 63, number, LINE);
         }
     }
     d.box(x, 71, x + wide, 72, DIM);

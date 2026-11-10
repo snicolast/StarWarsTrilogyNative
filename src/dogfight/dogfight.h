@@ -5,11 +5,12 @@
 // models where this simulation puts them, seen by its camera), a frame every
 // 1/60 s published as the game's would be.
 //
-// So far: flight (pitch, yaw, roll, throttle) among ships, the enemy fighters
-// flown by pilots of their own that go for the player's tail and fire (a
-// shield takes the hits), the X-wing's four cannons (the TIE fighters blow up after a few hits) and a
-// target lock: a bracket round the enemy taken, or an arrow to it when it is
-// out of view (R3DNativeScene::marks).
+// The mode is a last man standing: as many X-wings (the player's one of them)
+// as TIE fighters, each with a pilot of its own and the same shield, which
+// comes back more slowly as ships fall and not at all for the last few. The
+// side with a ship left wins; the player's fall ends it. With it: the
+// X-wing's four cannons, a braking turn, and a target lock (a bracket round
+// the enemy taken, or an arrow to it when out of view: R3DNativeScene::marks).
 #pragma once
 #include <atomic>
 #include <cstdint>
@@ -56,7 +57,15 @@ bool dogfight_locked();     // whether an enemy is locked
 float dogfight_shield();    // the player's shield, 0..1
 float dogfight_charge();    // what is left for the braking turn, 0..1
 bool dogfight_warning();    // an enemy has the player in its sights
-bool dogfight_downed();     // just shot down (the flight has started again)
+// Last man standing: the match as it stands (0: on; over, the next begins
+// after a moment), how many fighters each side has left (the player among
+// the friends), the locked enemy's shield (0..1; -1: none locked) and how
+// long the match has taken (seconds)
+enum { DOGFIGHT_VICTORY = 1, DOGFIGHT_DEFEAT = 2 };
+int dogfight_result();
+int dogfight_left(bool foes);
+float dogfight_target_shield();
+float dogfight_took();
 // The enemy pilots (on unless told): off, the enemy fighters stand still (the tests)
 void dogfight_set_ai(bool on);
 // What has sounded since the last call (game thread, after a step): bits

@@ -98,13 +98,13 @@ int main() {
         fly(0, 0, 0, 0, 3);
         CHECK(bolts(*dogfight_scene()) == 0);
         // The target lock: a press takes an enemy and marks it (brackets and
-        // an arrow, ten lines, and the distance's 28 strokes); another press, another enemy
+        // an arrow, ten lines, its shield's four pips and the distance's 28 strokes); another press, another enemy
         CHECK(!dogfight_locked() && dogfight_scene()->marks.size() == 10 * 6);   // (the arrow to the one attacking: there, with no size)
         g_dogfight_controls.lock = true;
         dogfight_step(1.0f / 60);
         g_dogfight_controls.lock = false;
         dogfight_step(1.0f / 60);
-        CHECK(dogfight_locked() && dogfight_scene()->marks.size() == 48 * 6);
+        CHECK(dogfight_locked() && dogfight_scene()->marks.size() == 52 * 6);
         for (const auto& v : dogfight_scene()->marks) CHECK(v.pos[2] < 0 && v.pos[2] > -0.3f);
         // Chasing the nearest TIE fighter and firing at it: it blows up
         const int before = dogfight_ships();
@@ -159,13 +159,16 @@ int main() {
         dogfight_reset();
         g_dogfight_controls.pitch = g_dogfight_controls.yaw = g_dogfight_controls.roll = g_dogfight_controls.throttle = 0;
         auto start = dogfight_scene();
-        bool green = false, warned = false, tie_sound = false;
+        bool green = false, warned = false, tie_sound = false, lost = false;
+        std::shared_ptr<const R3DNativeScene> end;   // (a few seconds in: the match may be lost, and begun again, within the minute)
         float least = 1;
         for (int i = 0; i < 60 * 60; i++) {
             dogfight_step(1.0f / 60);
             tie_sound |= (dogfight_take_sounds() & DOGFIGHT_SOUND_TIE) != 0;
             warned |= dogfight_warning();
             least = std::min(least, dogfight_shield());
+            lost |= dogfight_result() == DOGFIGHT_DEFEAT;
+            if (i == 60 * 5) end = dogfight_scene();
             if (i % 30) continue;
             auto sc = dogfight_scene();
             for (const auto& b : sc->beams) green |= b.color == 0xFF30FF28u;
@@ -174,12 +177,18 @@ int main() {
                 CHECK(std::fabs(dot(it.m, it.m + 4)) < 1e-3f && std::fabs(dot(it.m, it.m + 8)) < 1e-3f && std::fabs(dot(it.m + 4, it.m + 8)) < 1e-3f);
             }
         }
-        auto end = dogfight_scene();
         int moved = 0;
         for (size_t i = 0; i < std::min(start->items.size(), end->items.size()); i++)
             if (start->items[i].models[0] == 0xEDB841 && std::fabs(start->items[i].m[12] - end->items[i].m[12]) > 1) moved++;
         printf("ai: least shield %.2f, moved %d, green %d, warned %d\n", least, moved, green, warned);
         CHECK(moved >= 5 && green && warned && tie_sound && least < 1.0f);
+        // Last man standing: flying straight on, the player falls, and the
+        // match begins again with both sides whole
+        CHECK(lost);
+        for (int i = 0; i < 60 * 300 && dogfight_result() != DOGFIGHT_DEFEAT; i++) dogfight_step(1.0f / 60);
+        CHECK(dogfight_result() == DOGFIGHT_DEFEAT && dogfight_shield() == 0);
+        for (int i = 0; i < 60 * 7; i++) dogfight_step(1.0f / 60);
+        CHECK(dogfight_result() == 0 && dogfight_left(false) == 6 && dogfight_left(true) == 6 && dogfight_shield() == 1);
         dogfight_set_ai(false);
         dogfight_reset();
     }
@@ -195,7 +204,7 @@ int main() {
                 uint32_t p = front[y * w + x];
                 if (!p) continue;
                 lit++;
-                if (x > 200 || y < h - 60) outside++;
+                if (x > 200 || y < h - 72) outside++;
                 if ((p >> 24) != 0xFF) soft++;
             }
         CHECK(lit > 400 && outside == 0 && soft == 0);

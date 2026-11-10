@@ -24,23 +24,23 @@ struct Canvas {
         box(x0, y0, x0 + 1, y1, color), box(x1 - 1, y0, x1, y1, color);
     }
     // Letters with a dark edge, so they read over bright ships; returns the x after the text
-    int text(int x, int y, const char* s, uint32_t color) {
+    int text(int x, int y, const char* s, uint32_t color, int size = 1) {
         for (int pass = 0; pass < 2; pass++) {
             int at = x;
-            for (const char* p = s; *p; p++, at += 6) {
+            for (const char* p = s; *p; p++, at += 6 * size) {
                 for (const DogfightGlyph& g : DOGFIGHT_GLYPHS) {
                     if (g.c != *p) continue;
                     for (int r = 0; r < 7; r++)
                         for (int c = 0; c < 5; c++) {
                             if (g.rows[r][c] != '#') continue;
-                            if (pass) dot(at + c, y + r, color);
-                            else box(at + c - 1, y + r - 1, at + c + 2, y + r + 2, 0xFF000000u);
+                            if (pass) box(at + c * size, y + r * size, at + (c + 1) * size, y + (r + 1) * size, color);
+                            else box(at + c * size - 1, y + r * size - 1, at + (c + 1) * size + 1, y + (r + 1) * size + 1, 0xFF000000u);
                         }
                     break;
                 }
             }
         }
-        return x + 6 * int(strlen(s));
+        return x + 6 * size * int(strlen(s));
     }
 };
 
@@ -50,10 +50,33 @@ constexpr uint32_t GREEN = 0xFF30E040u, YELLOW = 0xFFF0E020u, DIM = 0xFF104018u,
 }  // namespace
 
 void dogfight_draw_hud(uint32_t* front, int w, int h) {
-    if (dogfight_cockpit_on()) return;   // the cockpit's screen shows them instead
     Canvas cv{front, w, h};
-    // Bottom left: the shield, SPEED and its number, the throttle as a bar under it
-    int x = 22, y = h - 56;
+    // How the match went, across the middle (over the cockpit too), with the
+    // player's kills and the time it took
+    if (const int result = dogfight_result()) {
+        const char* words = result == DOGFIGHT_VICTORY ? "VICTORY" : "DEFEATED";
+        cv.text((w - 6 * 4 * int(strlen(words))) / 2, h / 2 - 60, words, YELLOW, 4);
+        char line[48];
+        const int took = int(dogfight_took());
+        snprintf(line, sizeof(line), "KILLS %d   TIME %d:%02d", dogfight_kills(), took / 60, took % 60);
+        cv.text((w - 6 * int(strlen(line))) / 2, h / 2 - 22, line, GREEN);
+    }
+    if (dogfight_cockpit_on()) return;   // the cockpit's screen shows the rest instead
+    // Bottom left: the fighters left on each side, the shield, SPEED and its
+    // number, the throttle as a bar under it
+    int x = 22, y = h - 68;
+    {
+        char left[16];
+        snprintf(left, sizeof(left), "%d", dogfight_left(false));
+        int after = cv.text(cv.text(x, y, "X-WING", GREEN) + 6, y, left, YELLOW);
+        snprintf(left, sizeof(left), "%d", dogfight_left(true));
+        cv.text(cv.text(after + 12, y, "TIE", GREEN) + 6, y, left, YELLOW);
+        if (const float theirs = dogfight_target_shield(); theirs >= 0) {   // the locked enemy's shield
+            snprintf(left, sizeof(left), "%03d", int(theirs * 100 + 0.5f));
+            cv.text(cv.text(x + 132, y, "TARGET", GREEN) + 6, y, left, YELLOW);
+        }
+    }
+    y += 12;
     {
         char shield[24];
         snprintf(shield, sizeof(shield), "%03d", int(dogfight_shield() * 100 + 0.5f));
