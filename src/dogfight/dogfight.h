@@ -27,6 +27,8 @@ struct DogfightControls {
     std::atomic<float> throttle{0};   // + faster, - slower (a rate), unless `absolute`
     std::atomic<bool> absolute{false};   // a throttle lever: `throttle` is its position, 0..1
     std::atomic<bool> fire{false};       // the cannons, while held
+    // Trying the game's sounds out (for now): keys 1 to 6 ask for one each; 0: none
+    std::atomic<int> audition{0};
     std::atomic<bool> lock{false};       // the target lock: each press takes the enemy nearest the nose (the next nearest if it has that one)
 };
 extern DogfightControls g_dogfight_controls;

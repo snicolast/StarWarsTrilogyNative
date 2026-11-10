@@ -1187,8 +1187,8 @@ void dogfight_begin() {
 // board for each, as seen in a game of Yavin (SWT_MIDILOG): A0, a sound or
 // a voice, and how. The player's cannons are A0 23 with 01 and 00 in turn
 // (twice each: the four cannons, side by side); what the enemy fighters do
-// comes on voices 12 to 22, and 0A is what follows a kill (a guess: the
-// commonest of 0A, 0B and 0E). A hit that does not kill has no sound yet.
+// comes on voices 12 to 22: 0A is a TIE fighter's shot (heard), and 02, the
+// last a voice gets, is taken for its explosion (a guess). A hit that does not kill has no sound yet.
 // SWT_DOGFIGHT_SOUND=laser,hit,kill gives others, each as hex bytes ("" none): to try them out
 static void dogfight_sounds(int which) {
     static std::vector<uint8_t> bytes[3];
@@ -1208,13 +1208,21 @@ static void dogfight_sounds(int which) {
                 for (uint8_t b : bytes[k]) g_sound.midi_write(b);
         return;
     }
+    // (trying them out: keys 1 to 6 play what an enemy's voice does with 02, 03, 08, 09, 0B and 0E)
+    if (int key = g_dogfight_controls.audition.exchange(0)) {
+        static const uint8_t how[6] = {0x02, 0x03, 0x08, 0x09, 0x0B, 0x0E};
+        const uint8_t m[3] = {0xA0, 0x18, how[key - 1]};
+        for (uint8_t b : m) g_sound.midi_write(b);
+        printf("[dogfight] sound A0 18 %02X\n", m[2]);
+        fflush(stdout);
+    }
     static unsigned shots = 0, kills = 0;
     if (which & DOGFIGHT_SOUND_LASER) {
         const uint8_t m[3] = {0xA0, 0x23, uint8_t(shots++ >> 1 & 1 ? 0x00 : 0x01)};
         for (uint8_t b : m) g_sound.midi_write(b);
     }
     if (which & DOGFIGHT_SOUND_KILL) {
-        const uint8_t m[3] = {0xA0, uint8_t(0x14 + (kills++ & 3)), 0x0A};
+        const uint8_t m[3] = {0xA0, uint8_t(0x14 + (kills++ & 3)), 0x02};
         for (uint8_t b : m) g_sound.midi_write(b);
     }
 }
