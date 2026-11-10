@@ -86,8 +86,9 @@ enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4
        // The friends' voices (the game's own lines): thanks from one the player saved,
        // a cheer for a good kill, a call for help from one that cannot shake an enemy off
        DOGFIGHT_VOICE_THANKS = 128, DOGFIGHT_VOICE_CHEER = 256, DOGFIGHT_VOICE_HELP = 512,
-       DOGFIGHT_SOUND_LOCK = 1024 };   // the target lock took a ship
-// What was last said, for the screen to show a moment: 0 nothing, or one of the DOGFIGHT_VOICE_* / DOGFIGHT_SOUND_SAVED
+       DOGFIGHT_SOUND_LOCK = 1024,     // the target lock took a ship
+       DOGFIGHT_ALONE = 2048 };        // (no sound: said on the screen when the last friend has fallen)
+// What was last said, for the screen to show a moment: 0 nothing, or one of the DOGFIGHT_VOICE_* / DOGFIGHT_SOUND_SAVED / DOGFIGHT_ALONE
 int dogfight_message();
 int dogfight_take_sounds();
 float dogfight_nearest();   // distance to the nearest ship (0: none)

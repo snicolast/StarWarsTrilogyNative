@@ -756,6 +756,8 @@ void step(float dt) {
     for (const Ship& ship : s.ships) friends += ship.shape == &XWING, foes += foe(ship);
     if (s.over == DOGFIGHT_DEFEAT) friends--;
     if (s.left[0] >= 0 && friends < s.left[0]) s.fell[0] = s.time;
+    // The last friend has fallen: the player is told, on the view and the screen
+    if (s.left[0] > 1 && friends == 1 && foes > 0 && !s.over) s.message = DOGFIGHT_ALONE, s.message_left = 4.5f, s.say = 0;
     if (s.left[1] >= 0 && foes < s.left[1]) s.fell[1] = s.time;
     s.left[0] = friends, s.left[1] = foes;
     s.regen = std::clamp(float(friends + foes - 4) / float(std::max(1, s.total - 4)), 0.0f, 1.0f) * std::clamp(1 - (s.took - WANE_FROM) / WANE_FOR, 0.0f, 1.0f);

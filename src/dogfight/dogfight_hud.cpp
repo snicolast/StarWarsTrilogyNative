@@ -70,6 +70,12 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
         snprintf(line, sizeof(line), "KILLS %d   TIME %d:%02d", dogfight_kills(), took / 60, took % 60);
         cv.text((w - 6 * int(strlen(line))) / 2, h / 2 - 22, line, GREEN);
     }
+    // The last friend has fallen: said across the view for a moment, blinking at first
+    if (dogfight_message() == DOGFIGHT_ALONE && !dogfight_result()) {
+        static int blink = 0;
+        const char* words = "ALL WINGMEN LOST - YOU ARE ALONE";
+        if (++blink / 8 % 2 == 0) cv.text((w - 6 * 2 * int(strlen(words))) / 2, 92, words, YELLOW, 2);
+    }
     if (dogfight_cockpit_on()) return;   // the cockpit's screen shows the rest instead
     // A match's start: how many against how many, across the top (with a
     // cockpit its hologram says it)

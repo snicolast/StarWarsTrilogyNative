@@ -719,7 +719,7 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     if (message || result) {
         // (how the match went comes before anything said)
         const char* words = result == DOGFIGHT_VICTORY ? "VICTORY" : result == DOGFIGHT_DEFEAT ? "DEFEATED" : message == DOGFIGHT_VOICE_THANKS ? "THAT WAS CLOSE" : message == DOGFIGHT_VOICE_CHEER ? "THATS IT" :
-                            message == DOGFIGHT_VOICE_HELP ? "CANT SHAKE HIM" : "TAIL CLEAR";
+                            message == DOGFIGHT_VOICE_HELP ? "CANT SHAKE HIM" : message == DOGFIGHT_ALONE ? "YOU ARE ALONE" : "TAIL CLEAR";
         float width = 6 * float(strlen(words)) - 1, size = width > wide ? 1 : std::min(2.0f, std::floor(wide / width));
         d.text(x + (wide - width * size) * 0.5f, size > 1 ? 54 : 58, words, YELLOW, size);
     } else {
