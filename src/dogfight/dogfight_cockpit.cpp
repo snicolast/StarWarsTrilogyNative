@@ -213,7 +213,16 @@ float lamp_level(const Lamp& l, double time) {
 
 }  // namespace
 
-bool dogfight_cockpit_on() { return g_cockpit.on; }
+static std::atomic<bool> g_hidden{false};
+bool dogfight_cockpit_on() { return g_cockpit.on && !g_hidden; }
+void dogfight_cockpit_toggle() { g_hidden = !g_hidden; }
+bool dogfight_cockpit_screen(float* middle) {
+    if (!dogfight_cockpit_on() || !g_cockpit.panel.found) return false;
+    const Panel& p = g_cockpit.panel;
+    V3 c = p.top_left + p.right * 0.5f + p.down * 0.5f;
+    middle[0] = c.x, middle[1] = c.y, middle[2] = c.z;
+    return true;
+}
 
 std::vector<std::string> dogfight_cockpit_textures() {
     std::vector<std::string> out;
@@ -462,33 +471,58 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
     // Over the globe, the fighters left on each side: the friends' in green
     // at the left (the player among them), the enemy's in red at the right,
     // each a big figure over a row of pips, one a fighter (faint: fallen).
-    // When one falls its side's figure swells and blinks for a moment
+    // When one falls its side's figure swells and blinks for a moment.
+    // A match begins with the two figures big at the top of the view, VS
+    // between them; as the flying in ends they come down to their place here
     {
         static int was[2] = {0, 0};
         static double fell[2] = {-99, -99};
         static const uint8_t strokes[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bit 0 the top, then clockwise, bit 6 the middle
+        const float intro = dogfight_intro(), land = 0.9f;   // (the last `land` seconds: on their way down)
+        const bool opening = intro >= 0;
+        float home = 1;   // 0 at the top of the view, 1 at their place over the globe
+        if (opening) {
+            float t = std::clamp((intro - (dogfight_intro_time() - land)) / land, 0.0f, 1.0f);
+            home = t * t * (3 - 2 * t);
+        }
+        // (they come on with a flicker, a moment in)
+        const bool on = !opening || intro > 0.7f || (intro > 0.35f && std::fmod(intro, 0.09f) < 0.05f);
+        auto mix = [&](V3 a, V3 b) { return a + (b - a) * home; };
+        const V3 top{0, 0.125f, -0.5f}, bx = mix(V3{1, 0, 0}, X), by = mix(V3{0, 1, 0}, eu);
+        const float big = 0.058f / (R * 0.42f);   // how much bigger at the top
+        const float scale = 1 + (big - 1) * (1 - home);
+        auto figure = [&](V3 at, uint8_t lit, float high, float wide, float stroke, uint32_t rgb, float alpha) {
+            const V3 x0 = bx * (-wide * 0.5f), x1 = bx * (wide * 0.5f), y1 = by * (high * 0.5f), y0 = by * (-high * 0.5f), ym{0, 0, 0};
+            const V3 seg[7][2] = {{x0 + y1, x1 + y1}, {x1 + y1, x1 + ym}, {x1 + ym, x1 + y0}, {x0 + y0, x1 + y0}, {x0 + ym, x0 + y0}, {x0 + y1, x0 + ym}, {x0 + ym, x1 + ym}};
+            for (int j = 0; j < 7; j++)
+                if (lit >> j & 1) h.line(at + seg[j][0], at + seg[j][1], stroke, rgb, alpha);
+        };
         for (int k = 0; k < 2; k++) {
-            const int left = std::clamp(dogfight_left(k == 1), 0, 9), side = dogfight_side(k == 1);
-            if (left < was[k]) fell[k] = time;
-            if (time < fell[k]) fell[k] = -99;   // (a new flight)
+            const int side = dogfight_side(k == 1), left = std::clamp(opening ? side : dogfight_left(k == 1), 0, 9);
+            if (left < was[k] && !opening) fell[k] = time;
+            if (time < fell[k] || opening) fell[k] = -99;   // (a new flight)
             was[k] = left;
             const float since = float(time - fell[k]);
             const bool news = since < 2.5f;
-            const bool lit = !news || std::fmod(since, 0.3f) < 0.19f;
-            const float grow = news ? 1.0f + 0.5f * std::max(0.0f, 1 - since / 0.6f) : 1.0f;
+            const bool lit = on && (!news || std::fmod(since, 0.3f) < 0.19f);
+            const float grow = (news ? 1.0f + 0.5f * std::max(0.0f, 1 - since / 0.6f) : 1.0f) * scale;
             const uint32_t rgb = news && lit ? WHITE : k ? RED : GREEN;
-            const V3 at = C + eu * (R * 1.58f) + X * (R * (k ? 0.5f : -0.5f));
-            const float high = R * 0.42f * grow, wide = R * 0.24f * grow, stroke = thin * (news ? 3.2f : 2.4f);
-            const V3 x0 = X * (-wide * 0.5f), x1 = X * (wide * 0.5f), y1 = eu * (high * 0.5f), y0 = eu * (-high * 0.5f), ym{0, 0, 0};
-            const V3 seg[7][2] = {{x0 + y1, x1 + y1}, {x1 + y1, x1 + ym}, {x1 + ym, x1 + y0}, {x0 + y0, x1 + y0}, {x0 + ym, x0 + y0}, {x0 + y1, x0 + ym}, {x0 + ym, x1 + ym}};
-            if (lit)
-                for (int j = 0; j < 7; j++)
-                    if (strokes[left] >> j & 1) h.line(at + seg[j][0], at + seg[j][1], stroke, rgb, 0.95f);
+            const float apart = k ? 1.0f : -1.0f;
+            const V3 at = mix(top + V3{apart * 0.085f, 0, 0}, C + eu * (R * 1.58f) + X * (R * 0.5f * apart));
+            if (lit) figure(at, strokes[left], R * 0.42f * grow, R * 0.24f * grow, thin * (news ? 3.2f : 2.4f) * (1 + 0.8f * (scale - 1) / (big - 1)), rgb, 0.95f);
             const float gap = R * (side > 7 ? 0.085f : 0.105f);
-            for (int i = 0; i < side; i++) {
-                V3 pip = C + eu * (R * 1.2f) + X * (R * (k ? 0.5f : -0.5f) + gap * (float(i) - float(side - 1) * 0.5f));
+            for (int i = 0; i < side && home >= 1; i++) {
+                V3 pip = C + eu * (R * 1.2f) + X * (R * 0.5f * apart + gap * (float(i) - float(side - 1) * 0.5f));
                 h.dot(pip, R * 0.03f, k ? RED : GREEN, i < left ? 0.9f : 0.16f);
             }
+        }
+        if (opening && on && home < 1) {
+            // VS between them, smaller: a V of two lines and an S (the figure five's strokes)
+            const float high = 0.026f, wide = 0.015f, alpha = 0.9f * (1 - home);
+            const V3 v = top + V3{-0.012f, 0, 0}, s5 = top + V3{0.012f, 0, 0};
+            h.line(v + V3{-wide * 0.5f, high * 0.5f, 0}, v + V3{0, -high * 0.5f, 0}, thin * 2.6f, PALE, alpha);
+            h.line(v + V3{0, -high * 0.5f, 0}, v + V3{wide * 0.5f, high * 0.5f, 0}, thin * 2.6f, PALE, alpha);
+            figure(s5, strokes[5], high, wide, thin * 2.6f, PALE, alpha);
         }
     }
     // The ships: how far from the middle by the root of the distance (3000 at the rim)
@@ -536,7 +570,7 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
 
 void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway, const std::vector<DogfightContact>& contacts,
                           const float* level_up) {
-    if (!g_cockpit.on) return;
+    if (!dogfight_cockpit_on()) return;
     scene.fixed = g_cockpit.meshes;
     scene.casters = g_cockpit.casters;
     // The exposure as for a typical scene: measured, the dark inside opened

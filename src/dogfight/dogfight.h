@@ -32,8 +32,8 @@ struct DogfightControls {
     // The braking turn, while held: the engines cut, the ship slows fast and
     // turns near twice as tight, while its charge lasts
     std::atomic<bool> drift{false};
-    std::atomic<bool> lock_threat{false};   // ... and this one takes the enemy that is attacking (the orange arrow's)
-    std::atomic<bool> lock{false};       // the target lock: each press takes the enemy nearest the nose (the next nearest if it has that one)
+    std::atomic<bool> view{false};       // each press shows or hides the cockpit (hidden: the view of the arcade game, the ship's nose and a 2D HUD)
+    std::atomic<bool> lock{false};       // the target lock: each press takes the next enemy, from the nearest the nose outwards
 };
 extern DogfightControls g_dogfight_controls;
 
@@ -66,6 +66,10 @@ int dogfight_result();
 int dogfight_left(bool foes);
 float dogfight_target_shield();
 float dogfight_took();
+// A match begins with a moment of flying in, both sides at one speed and no
+// one firing: the seconds of it gone (-1: not in it) and how long it lasts
+float dogfight_intro();
+float dogfight_intro_time();
 int dogfight_side(bool foes);   // fighters of each side at the start (drawn anew for every match)
 // The player's fall on the view: a red flash (1 at the first blast, soon 0), then how far it has gone to black (0..1)
 float dogfight_flash();
@@ -106,7 +110,10 @@ bool dogfight_cockpit_load(const char* dir);
 // takes longer than a frame, and the flight would start with a hitch that
 // the frame interpolation takes seconds to settle from)
 std::vector<std::string> dogfight_cockpit_textures();
-bool dogfight_cockpit_on();
+bool dogfight_cockpit_on();     // there is one, and it is not hidden
+void dogfight_cockpit_toggle();   // hidden, or shown again
+// The middle of its screen in view space (x right, y up, -z ahead; metres); false: no screen
+bool dogfight_cockpit_screen(float* middle);
 // time: seconds flown (its lamps blink). sway: how the cockpit is thrown about
 // now, a turn about the eye as a rotation vector (radians) and a shift
 // (units), in the view's axes (x right, y up, -z ahead); null: none

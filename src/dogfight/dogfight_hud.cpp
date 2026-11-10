@@ -1,6 +1,7 @@
 // DOGFIGHT's HUD, drawn into the game's own 2D front layer (496 x 384, as the
 // arcade's score and shield are), so it is scaled and filtered with the rest
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -70,6 +71,17 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
         cv.text((w - 6 * int(strlen(line))) / 2, h / 2 - 22, line, GREEN);
     }
     if (dogfight_cockpit_on()) return;   // the cockpit's screen shows the rest instead
+    // A match's start: how many against how many, across the top (with a
+    // cockpit its hologram says it)
+    if (const float intro = dogfight_intro(); intro >= 0.3f && (intro < dogfight_intro_time() - 0.6f || std::fmod(intro, 0.2f) < 0.12f)) {
+        char mine[8], theirs[8];
+        snprintf(mine, sizeof(mine), "%d", dogfight_side(false));
+        snprintf(theirs, sizeof(theirs), "%d", dogfight_side(true));
+        const int size = 4, wide = 6 * size * int(strlen(mine) + strlen(theirs)) + 6 * 2 * 4;
+        int at = cv.text((w - wide) / 2, 70, mine, GREEN, size);
+        at = cv.text(at + 6, 70 + 7 * (size - 2), " VS ", YELLOW, 2);
+        cv.text(at + 6, 70, theirs, 0xFFFF4030u, size);
+    }
     // Bottom left: the fighters left on each side, the shield, SPEED and its
     // number, the throttle as a bar under it
     int x = 22, y = h - 68;

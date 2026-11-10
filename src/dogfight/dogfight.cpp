@@ -152,7 +152,9 @@ struct Sim {
     double last_kill = -99;
     bool shaken = false;   // this hard turn has had its try at shaking them off
     float rested = 9;      // seconds since it was last used (the charge comes back after a moment)
-    bool threat_was = false;
+    bool view_was = false;
+    float intro = 0;       // seconds left of the flying in at a match's start
+    double hurt = -99;     // when the player was last hit
     // Last man standing: how many fighters there were at the start (the
     // player among them), how the match went (0: still on; DOGFIGHT_VICTORY,
     // DOGFIGHT_DEFEAT) and the seconds left until the next begins, how long
@@ -178,7 +180,7 @@ std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
 std::atomic<int> g_shown_message{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false};
 std::atomic<int> g_shown_result{0}, g_shown_friends{0}, g_shown_foes{0}, g_shown_side[2];
-std::atomic<float> g_shown_target_shield{-1}, g_shown_took{0}, g_shown_flash{0}, g_shown_dark{0};
+std::atomic<float> g_shown_target_shield{-1}, g_shown_took{0}, g_shown_flash{0}, g_shown_dark{0}, g_shown_intro{-1};
 std::atomic<float> g_shown_shield{1}, g_shown_push{0}, g_shown_charge{1};
 uint32_t g_first_seed = 0x5EED1234;
 bool g_ghost = false;   // (a harness's: the player cannot be hit, to see how the two sides fare by themselves)
@@ -200,6 +202,8 @@ constexpr float FIGHTER_BALL = 9.5f;
 // fighters, how many of each drawn anew for every match (reset()), all
 // with the same shield: a hit's worth of it (four bring a ship down), a
 // second's worth coming back after that long unhurt, while most still fly
+// A match begins with INTRO seconds of flying in: every fighter at INTRO_SPEED, no one firing
+constexpr float INTRO = 4.5f, INTRO_SPEED = 100;
 constexpr float DEFEAT_TIME = 7;   // seconds from the player's fall to the next match
 // ... and less from WANE_FROM seconds into the match, none WANE_FOR later: no match goes on for ever
 constexpr float WANE_FROM = 90, WANE_FOR = 90;
@@ -236,6 +240,11 @@ void reset() {
     for (Ship& ship : g_sim.ships)
         if (ship.shape->hits) ship.speed = g_ai ? 100.0f : 0.0f;
     g_sim.total = friends + foes;
+    if (g_ai) {
+        g_sim.intro = INTRO;
+        g_sim.speed = INTRO_SPEED, g_sim.throttle = (INTRO_SPEED - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
+        g_shown_speed = g_sim.speed, g_shown_throttle = g_sim.throttle;
+    }
     g_shown_ships = int(g_sim.ships.size()), g_shown_kills = 0;
     g_shown_side[0] = friends, g_shown_side[1] = foes, g_shown_friends = friends, g_shown_foes = foes;
 }
@@ -301,8 +310,9 @@ void cannons(Sim& s, bool fire, float dt) {
                     s.hitter = b.owner, s.hit_time = s.time;
                     s.threat = b.owner, s.threat_hold = 0;   // whoever hits is the one to worry about, at once
                     s.sounds |= DOGFIGHT_SOUND_HURT;
+                    s.hurt = s.time;
                     // (the cockpit is thrown about)
-                    s.sway[0] += rnd(-0.02f, 0.02f), s.sway[2] += rnd(-0.05f, 0.05f), s.sway[5] -= 0.012f;
+                    s.sway[0] += rnd(-0.05f, 0.05f), s.sway[1] += rnd(-0.03f, 0.03f), s.sway[2] += rnd(-0.12f, 0.12f), s.sway[5] -= 0.03f;
                     break;
                 }
             }
@@ -355,16 +365,23 @@ void cannons(Sim& s, bool fire, float dt) {
     s.bolts.erase(std::remove_if(s.bolts.begin(), s.bolts.end(), [](const Bolt& b) { return b.life <= 0; }), s.bolts.end());
 }
 
-// The target lock: the enemy nearest the nose; pressed again, the next nearest
+// The target lock: the enemy nearest the nose; pressed again, the next one
+// out from the nose, and after the farthest round the nearest again
 void lock(Sim& s) {
-    const Ship* best = nullptr;
-    float best_cos = -2;
+    auto off = [&](const Ship& ship) { return dot(unit(ship.pos + s.pos * -1), s.at.fwd); };   // (1: dead ahead)
+    float now = 2;
+    for (const Ship& ship : s.ships)
+        if (s.target && ship.id == s.target) now = off(ship);
+    const Ship* next = nullptr;
+    const Ship* first = nullptr;
     for (const Ship& ship : s.ships) {
         if (!foe(ship) || ship.id == s.target) continue;
-        float c = dot(unit(ship.pos + s.pos * -1), s.at.fwd);
-        if (c > best_cos) best_cos = c, best = &ship;
+        float c = off(ship);
+        if (!first || c > off(*first)) first = &ship;
+        if (c <= now && (!next || c > off(*next))) next = &ship;
     }
-    if (best) s.target = best->id, s.sounds |= DOGFIGHT_SOUND_LOCK;
+    if (!next) next = first;
+    if (next) s.target = next->id, s.sounds |= DOGFIGHT_SOUND_LOCK;
 }
 
 // The enemy fighters fly by the rules the player does (a speed, a turn rate,
@@ -622,11 +639,17 @@ void step(float dt) {
     Sim& s = g_sim;
     if (c.absolute) s.throttle = std::clamp(c.throttle.load(), 0.0f, 1.0f);
     else s.throttle = std::clamp(s.throttle + c.throttle * 0.6f * dt, 0.0f, 1.0f);
+    // Flying in: the throttle is held where every fighter's is
+    const bool flying_in = s.intro > 0;
+    if (flying_in) {
+        s.intro -= dt;
+        s.throttle = (INTRO_SPEED - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
+    }
     float target = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * s.throttle;
     // The braking turn: held, with charge left (and not begun on an empty one)
     // (run out, it is over until the button is let go: the charge comes back then)
     if (!c.drift) s.spent = false;
-    s.drifting = !s.over && c.drift && !s.spent && s.charge > (s.drifting ? 0.0f : 0.15f);
+    s.drifting = !s.over && !flying_in && c.drift && !s.spent && s.charge > (s.drifting ? 0.0f : 0.15f);
     if (s.over == DOGFIGHT_DEFEAT) target = SPEED_MIN;   // shot down: the engines are gone
     if (s.drifting) {
         s.charge = std::max(0.0f, s.charge - dt / 2.5f);
@@ -681,11 +704,15 @@ void step(float dt) {
     }
     if (c.lock && !s.lock_was && !s.over) lock(s);
     s.lock_was = c.lock;
-    if (c.lock_threat && !s.threat_was && s.threat) s.target = s.threat, s.sounds |= DOGFIGHT_SOUND_LOCK;   // the lock on the one attacking
-    s.threat_was = c.lock_threat;
+    if (c.view && !s.view_was) dogfight_cockpit_toggle();
+    s.view_was = c.view;
     // (a braking turn counts as the hardest of manoeuvres)
-    if (g_ai) pilots(s, std::clamp((std::fabs(c.pitch.load()) + std::fabs(c.yaw.load())) * (s.drifting ? 2.0f : 1.0f), 0.0f, 1.0f), dt);
-    cannons(s, c.fire && s.over != DOGFIGHT_DEFEAT, dt);
+    if (g_ai && flying_in) {
+        // (every fighter straight on at the one speed, towards the other side)
+        for (Ship& ship : s.ships)
+            if (ship.shape->hits) ship.speed = INTRO_SPEED, ship.pos = ship.pos + ship.at.fwd * (INTRO_SPEED * dt);
+    } else if (g_ai) pilots(s, std::clamp((std::fabs(c.pitch.load()) + std::fabs(c.yaw.load())) * (s.drifting ? 2.0f : 1.0f), 0.0f, 1.0f), dt);
+    cannons(s, c.fire && s.over != DOGFIGHT_DEFEAT && !flying_in, dt);
     // The friends' lines, when their moment comes
     s.voice_rest -= dt, s.message_left -= dt;
     if (s.say && (s.say_in -= dt) <= 0) {
@@ -712,7 +739,7 @@ void step(float dt) {
     // The match is over when the player falls or no enemy is left; the next
     // begins after a moment
     if (!s.over) {
-        s.took += dt;
+        if (!flying_in) s.took += dt;
         if (s.shield <= 0.001f) {
             s.over = DOGFIGHT_DEFEAT, s.over_left = DEFEAT_TIME;
             s.shield = 0, s.target = 0, s.threat = 0, s.warning = false;
@@ -743,7 +770,9 @@ void step(float dt) {
     // What the view does meanwhile: a red flash at the first blast, then it goes to black
     {
         const float since = s.over == DOGFIGHT_DEFEAT ? DEFEAT_TIME - s.over_left : -1;
-        g_shown_flash = since < 0 ? 0.0f : std::clamp(1 - since / 0.5f, 0.0f, 1.0f);
+        // (a hit that does not bring the ship down: a fainter, shorter one)
+        const float struck = 0.4f * std::clamp(1 - float(s.time - s.hurt) / 0.22f, 0.0f, 1.0f);
+        g_shown_flash = since < 0 ? struck : std::clamp(1 - since / 0.5f, 0.0f, 1.0f);
         g_shown_dark = since < 0 ? 0.0f : std::clamp((since - 1.0f) / 1.3f, 0.0f, 1.0f);
     }
     for (Blast& b : s.blasts) b.frame += 45.0f * dt;   // the fireball: a second
@@ -754,6 +783,7 @@ void step(float dt) {
     g_shown_message = s.message_left > 0 ? s.message : 0;
     g_shown_push = s.push, g_shown_charge = s.charge;
     g_shown_shield = std::max(0.0f, s.shield), g_shown_warning = s.warning;
+    g_shown_intro = s.intro > 0 ? INTRO - s.intro : -1.0f;
     g_shown_result = s.over, g_shown_friends = friends, g_shown_foes = foes, g_shown_took = s.took;
     float target_shield = -1;
     for (const Ship& ship : s.ships)
@@ -791,6 +821,8 @@ int dogfight_result() { return g_shown_result; }
 int dogfight_left(bool foes) { return foes ? g_shown_foes : g_shown_friends; }
 float dogfight_target_shield() { return g_shown_target_shield; }
 float dogfight_took() { return g_shown_took; }
+float dogfight_intro() { return g_shown_intro; }
+float dogfight_intro_time() { return INTRO; }
 int dogfight_side(bool foes) { return g_shown_side[foes ? 1 : 0]; }
 float dogfight_flash() { return g_shown_flash; }
 float dogfight_dark() { return g_shown_dark; }
@@ -885,6 +917,29 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
         arrow(right, up, 0.27f, shown, ORANGE, nullptr, nullptr);
         float half = brackets(right, up, ahead, looks, framed, ORANGE);
         pips(right, up, ahead, half, threat ? threat->shield : 0, framed, ORANGE);
+    }
+    // The player's ship is hit: its shield, four pips in red, shows a moment
+    // under the middle of the view and then flies, shrinking, to where the
+    // shield is always shown (the cockpit's screen, or the 2D HUD's corner):
+    // where to look. Four lines, there with no size the rest of the time
+    {
+        const float since = float(s.time - s.hurt);
+        const bool shown = since < 0.95f && !s.over;
+        const float go = std::clamp((since - 0.4f) / 0.55f, 0.0f, 1.0f), ease = go * go * (3 - 2 * go);
+        Vec from{0, -D * 0.075f, -D}, to{-D * 0.40f, -D * 0.30f, -D};
+        float screen[3];
+        if (dogfight_cockpit_screen(screen) && screen[2] < -1e-3f) to = Vec{screen[0], screen[1], screen[2]} * (D / -screen[2]);
+        const Vec at = from + (to + from * -1) * ease;
+        const float half = D * 0.034f * (1 - 0.65f * ease), pip = half * 2 / 4;
+        const int left = int(std::ceil(s.shield * 4 - 0.01f));
+        for (int k = 0; k < 4; k++) {
+            float x0 = at.x - half + pip * float(k) + pip * 0.12f, x1 = x0 + pip * 0.76f;
+            bool lit = k < left;
+            // (the one just lost blinks white before it goes faint)
+            bool lost = k == left && since < 0.4f && std::fmod(since, 0.14f) < 0.08f;
+            line(Vec{x0, at.y, at.z}, Vec{shown ? x1 : x0, at.y, at.z}, !shown ? 0 : (lit || lost ? D * 0.0045f : D * 0.0012f) * (1 - 0.6f * ease),
+                 lost ? 0xFFFFFFFFu : lit ? RED : 0xFF2090A0u);
+        }
     }
     // A fighter has fallen: for a moment, high on the view, the fighters left
     // on each side (the friends' in green, the enemy's in red), the figure

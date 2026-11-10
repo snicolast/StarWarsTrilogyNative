@@ -275,8 +275,8 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
             st.fly_triggers[0] = live && now_down[SDL_GAMEPAD_BUTTON_LEFT_SHOULDER] ? 1.0f : 0.0f;
             st.fly_triggers[1] = live && now_down[SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER] ? 1.0f : 0.0f;
             st.fly_fire = live && (SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 8000 || now_down[SDL_GAMEPAD_BUTTON_SOUTH]);
-            st.fly_lock = live && now_down[SDL_GAMEPAD_BUTTON_NORTH];
-            st.fly_threat = live && now_down[SDL_GAMEPAD_BUTTON_WEST];
+            st.fly_lock = live && now_down[SDL_GAMEPAD_BUTTON_WEST];
+            st.fly_view = live && now_down[SDL_GAMEPAD_BUTTON_NORTH];
             st.fly_drift = live && SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 8000;
         }
         stick(p, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, ax, ay, tilt);
@@ -408,7 +408,7 @@ void Gamepads::poll_joystick(Slot& s, PadState& st, const GamepadSettings& set, 
 
     st.fly_fire = focused && !menu && now_down[0];
     st.fly_lock = focused && !menu && now_down[1];
-    st.fly_threat = focused && !menu && now_down[2];
+    st.fly_view = focused && !menu && now_down[2];
     st.fly_drift = focused && !menu && now_down[3];
     if (!focused) {
         st.fire = st.reload = st.event = false;

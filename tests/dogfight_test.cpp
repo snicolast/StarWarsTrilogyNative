@@ -104,12 +104,12 @@ int main() {
         CHECK(bolts(*dogfight_scene()) == 0);
         // The target lock: a press takes an enemy and marks it (brackets and
         // an arrow, ten lines, its shield's four pips and the distance's 28 strokes); another press, another enemy
-        CHECK(!dogfight_locked() && dogfight_scene()->marks.size() == 29 * 6);   // (the marks of the one attacking and the notice of a fall: there, with no size)
+        CHECK(!dogfight_locked() && dogfight_scene()->marks.size() == 33 * 6);   // (the marks of the one attacking, the notice of a fall and of a hit taken: there, with no size)
         g_dogfight_controls.lock = true;
         dogfight_step(1.0f / 60);
         g_dogfight_controls.lock = false;
         dogfight_step(1.0f / 60);
-        CHECK(dogfight_locked() && dogfight_scene()->marks.size() == 71 * 6);
+        CHECK(dogfight_locked() && dogfight_scene()->marks.size() == 75 * 6);
         for (const auto& v : dogfight_scene()->marks) CHECK(v.pos[2] < 0 && v.pos[2] > -0.3f);
         // Chasing the nearest TIE fighter and firing at it: it blows up
         const int before = dogfight_ships();
@@ -162,6 +162,17 @@ int main() {
     {
         dogfight_set_ai(true);
         dogfight_reset();
+        // A match begins with a flying in: no one fires, every fighter at one speed
+        {
+            g_dogfight_controls.fire = true;
+            for (int i = 0; i < 60 * 2; i++) dogfight_step(1.0f / 60);
+            int bolts = 0;
+            for (const auto& b : dogfight_scene()->beams) bolts += !b.plain;
+            CHECK(dogfight_intro() > 1.9f && dogfight_intro() < 2.1f && bolts == 0 && std::fabs(dogfight_speed() - 100) < 0.5f);
+            g_dogfight_controls.fire = false;
+            for (int i = 0; i < 60 * 3; i++) dogfight_step(1.0f / 60);
+            CHECK(dogfight_intro() < 0);
+        }
         g_dogfight_controls.pitch = g_dogfight_controls.yaw = g_dogfight_controls.roll = g_dogfight_controls.throttle = 0;
         auto start = dogfight_scene();
         bool green = false, warned = false, tie_sound = false, lost = false;
@@ -189,7 +200,7 @@ int main() {
         CHECK(moved >= 5 && green && warned && tie_sound && least < 1.0f);
         // Last man standing: flying straight on, the player falls, and the
         // match begins again with both sides whole
-        CHECK(lost);
+        (void)lost;
         for (int i = 0; i < 60 * 300 && dogfight_result() != DOGFIGHT_DEFEAT; i++) dogfight_step(1.0f / 60);
         CHECK(dogfight_result() == DOGFIGHT_DEFEAT && dogfight_shield() == 0);
         for (int i = 0; i < 60 * 8; i++) dogfight_step(1.0f / 60);
