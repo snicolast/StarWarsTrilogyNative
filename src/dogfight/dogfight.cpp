@@ -61,6 +61,8 @@ const Shape TIE{{0xEDB841}, 1, 5.2f, 2};
 const Shape TIE_ADVANCED{{0xEBA43F}, 1, 4.7f, 3};
 const Shape FALCON{{0xF0B18D}, 1, 16.1f, 0};
 const Shape DESTROYER{{0xE17F78}, 1, 823.0f, 0};
+// The glow of an X-wing's engine and of a capital ship's (a model each, drawn behind every engine)
+constexpr uint32_t XWING_GLOW = 0xEE5CCE, DESTROYER_GLOW = 0xF05EA2;
 
 struct Ship {
     const Shape* shape;
@@ -1005,6 +1007,23 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
         it.m[15] = 1;
         it.key = ship.id;
         scene->items.push_back(it);
+        // The glow of its engines, as the game draws it in Yavin: a small model
+        // of its own behind each of an X-wing's four, and one behind each of a
+        // capital ship's three (where the game puts them from the ship's
+        // origin, in the model's axes: read from F9 snapshots of the stage)
+        static const float xwing_engines[4][3] = {{1.425f, 0.775f, -5.93f}, {-1.425f, 0.775f, -5.93f}, {1.425f, -0.775f, -5.93f}, {-1.425f, -0.775f, -5.93f}};
+        static const float destroyer_engines[3][3] = {{-200, -47.152f, 0}, {0, -47.152f, 0}, {200, -47.152f, 0}};
+        const bool xwing = ship.shape == &XWING, big = ship.shape == &DESTROYER;
+        for (int k = 0; k < (xwing ? 4 : big ? 3 : 0); k++) {
+            const float* o = xwing ? xwing_engines[k] : destroyer_engines[k];
+            R3DNativeScene::Item glow = it;
+            glow.count = 1;
+            glow.models[0] = xwing ? XWING_GLOW : DESTROYER_GLOW;
+            Vec at = ship.pos + cols[0] * o[0] + cols[1] * o[1] + cols[2] * o[2];
+            glow.m[12] = at.x, glow.m[13] = at.y, glow.m[14] = at.z;
+            glow.key = 0x40000000u | ship.id << 3 | uint32_t(k);
+            scene->items.push_back(glow);
+        }
     }
     for (const Bolt& b : s.bolts) {
         if (b.flown <= 0) continue;   // (fired this instant)
