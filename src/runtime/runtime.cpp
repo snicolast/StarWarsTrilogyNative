@@ -30,6 +30,7 @@
 #include "scsi53c810.h"
 #include "../video/tilegen.h"
 #include "../audio/audio_out.h"
+#include "../audio/engine_sound.h"
 #include "../audio/sound_board.h"
 #include "../video/r3d_state.h"
 #include "stats.h"
