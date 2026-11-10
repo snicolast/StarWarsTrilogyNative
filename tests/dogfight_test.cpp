@@ -162,16 +162,30 @@ int main() {
     {
         dogfight_set_ai(true);
         dogfight_reset();
-        // A match begins with a flying in: no one fires, every fighter at one speed
+        // A round begins calmly: the squadron's number told and no enemy
+        // yet, every fighter at one speed; then the enemy is detected, its
+        // number told, and three seconds are counted down. No one fires before the fight
         {
-            g_dogfight_controls.fire = true;
             for (int i = 0; i < 60 * 2; i++) dogfight_step(1.0f / 60);
+            CHECK(dogfight_told(false) > 1.9f && dogfight_told(true) < 0 && dogfight_left(true) == 0 && std::fabs(dogfight_speed() - 100) < 0.5f);
+            bool detected = false, counted = false, fought = false;
             int bolts = 0;
-            for (const auto& b : dogfight_scene()->beams) bolts += !b.plain;
-            CHECK(dogfight_intro() > 1.9f && dogfight_intro() < 2.1f && bolts == 0 && std::fabs(dogfight_speed() - 100) < 0.5f);
+            for (int i = 0; i < 60 * 14 && !fought; i++) {
+                dogfight_step(1.0f / 60);
+                if (!detected && dogfight_banner() != DOGFIGHT_BANNER_ENEMIES) g_dogfight_controls.fire = false;
+                else g_dogfight_controls.fire = true;
+                const bool calm = dogfight_banner() == DOGFIGHT_BANNER_ENEMIES || dogfight_countdown() > 0;
+                if (dogfight_banner() == DOGFIGHT_BANNER_ENEMIES) detected = true;
+                if (dogfight_countdown() > 0) {
+                    counted = true;
+                    CHECK(dogfight_told(true) > 0 && dogfight_left(true) > dogfight_left(false));
+                }
+                if (calm)
+                    for (const auto& b : dogfight_scene()->beams) bolts += !b.plain;
+                fought = counted && !calm;
+            }
+            CHECK(detected && counted && fought && bolts == 0);
             g_dogfight_controls.fire = false;
-            for (int i = 0; i < 60 * 3; i++) dogfight_step(1.0f / 60);
-            CHECK(dogfight_intro() < 0);
         }
         g_dogfight_controls.pitch = g_dogfight_controls.yaw = g_dogfight_controls.roll = g_dogfight_controls.throttle = 0;
         auto start = dogfight_scene();
@@ -199,13 +213,13 @@ int main() {
         printf("ai: least shield %.2f, moved %d, green %d, warned %d\n", least, moved, green, warned);
         CHECK(moved >= 5 && green && warned && tie_sound && least < 1.0f);
         // Last man standing: flying straight on, the player falls, and the
-        // match begins again with both sides whole
+        // run begins again: the squadron whole, the enemy yet to come
         (void)lost;
         for (int i = 0; i < 60 * 300 && dogfight_result() != DOGFIGHT_DEFEAT; i++) dogfight_step(1.0f / 60);
         CHECK(dogfight_result() == DOGFIGHT_DEFEAT && dogfight_shield() == 0);
         for (int i = 0; i < 60 * 8; i++) dogfight_step(1.0f / 60);
-        CHECK(dogfight_result() == 0 && dogfight_left(false) == dogfight_side(false) && dogfight_left(true) == dogfight_side(true) && dogfight_shield() == 1);
-        CHECK(dogfight_side(false) >= 3 && dogfight_side(false) <= 6 && dogfight_side(true) > dogfight_side(false) && dogfight_side(true) <= 9);
+        CHECK(dogfight_result() == 0 && dogfight_round() == 1 && dogfight_left(false) == dogfight_side(false) && dogfight_left(true) == 0 && dogfight_told(true) < 0 && dogfight_shield() == 1);
+        CHECK(dogfight_side(false) >= 3 && dogfight_side(false) <= 4);
         dogfight_set_ai(false);
         dogfight_reset();
     }

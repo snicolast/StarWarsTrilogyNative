@@ -159,7 +159,15 @@ struct Sim {
     uint32_t aim = 0;
     Vec aim_at;
     float aim_off = 9;
-    float intro = 0;       // seconds left of the flying in at a match's start
+    // Where the round is: the squadron's number is told (MUSTER), then after a
+    // wait the enemy is detected and its number told (DETECTED), a count down
+    // (COUNT), the fight (FIGHT), a moment for the round won (CLEAR) and the
+    // new X-wings coming up from behind for the next (REINFORCE, and MUSTER again)
+    enum Stage { MUSTER, DETECTED, COUNT, FIGHT, CLEAR, REINFORCE } stage = FIGHT;
+    float stage_time = 0, wait = 0;   // seconds in this stage, and how long the muster lasts
+    double told[2] = {0, 0};          // when each side's number was last told (-1: not shown)
+    int before = 0;                   // the friends there were while the new ones are still on their way
+    float fought = 0;                 // seconds this round's fight has lasted
     double hurt = -99;     // when the player was last hit
     // Last man standing: how many fighters there were at the start (the
     // player among them), how the match went (0: still on; DOGFIGHT_VICTORY,
@@ -186,7 +194,8 @@ std::atomic<int> g_shown_ships{0}, g_shown_kills{0}, g_shown_round{1};
 std::atomic<int> g_shown_message{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false};
 std::atomic<int> g_shown_result{0}, g_shown_friends{0}, g_shown_foes{0}, g_shown_side[2];
-std::atomic<float> g_shown_target_shield{-1}, g_shown_took{0}, g_shown_flash{0}, g_shown_dark{0}, g_shown_intro{-1};
+std::atomic<float> g_shown_target_shield{-1}, g_shown_took{0}, g_shown_flash{0}, g_shown_dark{0}, g_shown_told[2], g_shown_count{-1};
+std::atomic<int> g_shown_banner{0};
 std::atomic<float> g_shown_shield{1}, g_shown_push{0}, g_shown_charge{1};
 uint32_t g_first_seed = 0x5EED1234;
 bool g_ghost = false;   // (a harness's: the player cannot be hit, to see how the two sides fare by themselves)
@@ -208,13 +217,16 @@ constexpr float FIGHTER_BALL = 9.5f;
 // fighters, how many of each drawn anew for every match (reset()), all
 // with the same shield: a hit's worth of it (four bring a ship down), a
 // second's worth coming back after that long unhurt, while most still fly
-// A match begins with INTRO seconds of flying in: every fighter at INTRO_SPEED, no one firing
-constexpr float INTRO = 4.5f, INTRO_SPEED = 100;
+// Before a round's fight every fighter flies at INTRO_SPEED, no one firing:
+// the enemy is DETECTED seconds on the screen (its number told TOLD into
+// them), then COUNTDOWN seconds are counted down. A round won is CLEAR
+// seconds on the screen before the new X-wings set out
+constexpr float INTRO_SPEED = 100, DETECTED = 3.6f, TOLD = 1.6f, COUNTDOWN = 3, CLEAR = 3.5f;
 // The help with the aim (it is an arcade game): with an enemy's meeting point
 // within AIM_CONE of the nose and AIM_RANGE away, the bolts go to it and not
 // dead ahead; and within AIM_SLOW the stick turns the ship more slowly, down
 // to AIM_SLOWEST of its rate on the point itself, so the nose settles on it
-constexpr float AIM_CONE = 0.105f, AIM_SLOW = 0.19f, AIM_SLOWEST = 0.45f, AIM_RANGE = 1500;
+constexpr float AIM_CONE = 0.07f, AIM_SLOW = 0.14f, AIM_SLOWEST = 0.6f, AIM_RANGE = 1500;
 constexpr float DEFEAT_TIME = 7;   // seconds from the player's fall to the next match
 // ... and less from WANE_FROM seconds into the match, none WANE_FOR later: no match goes on for ever
 // (WANE_FROM and five seconds more a fighter there was at the start)
@@ -227,55 +239,83 @@ float rnd(float lo, float hi) {
     return lo + (hi - lo) * float(g_seed >> 8) / float(1 << 24);
 }
 
-// A run is ROUNDS matches one after another, each with more fighters and
-// better enemy pilots than the one before, the last a battle; a lost match
-// sends the run back to the first. The kills and the time of the rounds won
-// so far are kept
+// A run is ROUNDS rounds one after another with no break between them, each
+// with more fighters and better enemy pilots than the one before, the last a
+// battle: the friends left fly on, new ones join them from behind, and the
+// next enemy comes. A lost round sends the run back to the first
 constexpr int ROUNDS = 3;
-int g_round = 1, g_run_kills = 0;
-float g_run_took = 0;
+int g_round = 1;
+
+// How many X-wings a round begins with (the player one of them), and how many
+// more the enemy has: drawn anew every time, the enemy always the more
+int friends_for(int round) { return round <= 1 ? 3 + int(rnd(0, 1.99f)) : round == 2 ? 4 + int(rnd(0, 2.99f)) : 9 + int(rnd(0, 2.99f)); }
+int more_for(int round) { return round <= 1 ? 1 + int(rnd(0, 1.99f)) : round == 2 ? 2 + int(rnd(0, 1.99f)) : 2 + int(rnd(0, 2.99f)); }
+int friends_left(const Sim& s) {
+    int n = s.over == DOGFIGHT_DEFEAT ? 0 : 1;
+    for (const Ship& ship : s.ships) n += ship.shape == &XWING;
+    return n;
+}
+
+// The round's enemy comes: more TIE fighters than there are X-wings, `far`
+// ahead of the player and facing it. Their pilots get better with the
+// rounds, and from the second a few aces in bent-winged TIEs lead them
+void enemy_arrives(Sim& s, float far) {
+    const int round = std::clamp(g_round, 1, ROUNDS);
+    const int foes = friends_left(s) + more_for(round);
+    const float worst = 0.2f + 0.07f * float(round), best = 0.6f + 0.08f * float(round);
+    const int aces = round - 1;
+    const float wide = 220.0f + 22.0f * float(foes);
+    for (int i = 0; i < foes; i++) {
+        Frame at{s.at.right * -1, s.at.down, s.at.fwd * -1};
+        const float roll = rnd(-0.4f, 0.4f);
+        for (int k = 0; k < 16; k++) at.turn(0, 0, roll / 16);
+        Vec pos = s.pos + s.at.right * rnd(-wide, wide) + s.at.down * rnd(-wide * 0.45f, wide * 0.45f) + s.at.fwd * (far + rnd(-300, 300));
+        s.ships.push_back({i < aces ? &TIE_ADVANCED : &TIE, pos, at, s.next_id++, g_ai ? INTRO_SPEED : 0.0f, {}});
+        s.ships.back().ai.skill = i < aces ? rnd(0.85f, 1.0f) : rnd(worst, best);
+    }
+    s.side[1] = foes;
+}
+
+// New X-wings come up from behind the player until there are `total` (the player among them)
+void friends_arrive(Sim& s, int total) {
+    for (int i = friends_left(s); i < total; i++) {
+        Vec pos = s.pos + s.at.right * rnd(-160, 160) + s.at.down * rnd(-50, 50) + s.at.fwd * -rnd(900, 1300);
+        s.ships.push_back({&XWING, pos, s.at, s.next_id++, 230.0f, {}});
+        s.ships.back().ai.skill = rnd(0.35f, 0.8f);
+    }
+}
 
 void reset() {
     g_sim = Sim{};
-    g_shown_speed = g_sim.speed, g_shown_throttle = g_sim.throttle;
-    auto add = [](const Shape& s, Vec pos, Frame at) { g_sim.ships.push_back({&s, pos, at, g_sim.next_id++, 0, {}}); };
+    Sim& s = g_sim;
+    auto add = [&](const Shape& shape, Vec pos, Frame at) { s.ships.push_back({&shape, pos, at, s.next_id++, 0, {}}); };
     // Two capital ships ahead, one side on and one coming
     add(DESTROYER, {600, 250, 4200}, facing(1.9f, 0, 0.1f));
     add(DESTROYER, {-2200, -400, 6500}, facing(2.9f, 0.05f, 0));
-    // The squadron beside the player, and as many TIE fighters coming at
-    // them from far ahead: the two sides meet head on
+    // The squadron beside the player
     static const float place[5][3] = {{-45, 6, 20}, {45, -4, 30}, {-90, 14, -25}, {90, -10, -15}, {0, 22, -60}};
-    // (drawn anew every time, the enemy always the more: three or four
-    // X-wings against one or two more in the first round; four to six
-    // against two or three more in the second; nine to eleven against two to
-    // four more in the third)
-    const int round = std::clamp(g_round, 1, ROUNDS);
-    const int friends = round == 1 ? 3 + int(rnd(0, 1.99f)) : round == 2 ? 4 + int(rnd(0, 2.99f)) : 9 + int(rnd(0, 2.99f));
-    const int foes = friends + (round == 1 ? 1 + int(rnd(0, 1.99f)) : round == 2 ? 2 + int(rnd(0, 1.99f)) : 2 + int(rnd(0, 2.99f)));
-    // (the enemy's pilots get better, and from the second round a few aces in bent-winged TIEs lead them)
-    const float worst = 0.2f + 0.07f * float(round), best = 0.6f + 0.08f * float(round);
-    const int aces = round - 1;
-    g_sim.side[0] = friends, g_sim.side[1] = foes;
+    const int friends = friends_for(g_round);
     for (int i = 0; i < friends - 1; i++) {
         add(XWING, {place[i % 5][0] * float(1 + i / 5), place[i % 5][1], place[i % 5][2] - 60.0f * float(i / 5)}, Frame{});
-        g_sim.ships.back().ai.skill = rnd(0.35f, 0.8f);
+        s.ships.back().ai.skill = rnd(0.35f, 0.8f);
+        s.ships.back().speed = g_ai ? INTRO_SPEED : 0.0f;
     }
-    const float wide = 220.0f + 22.0f * float(foes);
-    for (int i = 0; i < foes; i++) {
-        add(i < aces ? TIE_ADVANCED : TIE, {rnd(-wide, wide), rnd(-wide * 0.45f, wide * 0.45f), 2600 + rnd(-300, 300)}, facing(3.14159265f, 0, rnd(-0.4f, 0.4f)));
-        g_sim.ships.back().ai.skill = i < aces ? rnd(0.85f, 1.0f) : rnd(worst, best);
-    }
-    for (Ship& ship : g_sim.ships)
-        if (ship.shape->hits) ship.speed = g_ai ? 100.0f : 0.0f;
-    g_sim.total = friends + foes;
+    s.side[0] = friends;
     if (g_ai) {
-        g_sim.intro = INTRO;
-        g_sim.speed = INTRO_SPEED, g_sim.throttle = (INTRO_SPEED - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
-        g_shown_speed = g_sim.speed, g_shown_throttle = g_sim.throttle;
+        // (its number is told at once; the enemy is yet to be detected)
+        s.stage = Sim::MUSTER, s.wait = rnd(2.5f, 4.0f);
+        s.told[1] = -1;
+        s.speed = INTRO_SPEED, s.throttle = (INTRO_SPEED - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
+    } else {
+        // (a still scene, for the tests: both sides there from the start)
+        enemy_arrives(s, 2600);
+        s.total = s.side[0] + s.side[1];
     }
-    g_shown_ships = int(g_sim.ships.size()), g_shown_kills = g_run_kills;
-    g_shown_round = round;
-    g_shown_side[0] = friends, g_shown_side[1] = foes, g_shown_friends = friends, g_shown_foes = foes;
+    g_shown_speed = s.speed, g_shown_throttle = s.throttle;
+    g_shown_ships = int(s.ships.size()), g_shown_kills = 0;
+    g_shown_round = std::clamp(g_round, 1, ROUNDS);
+    g_shown_side[0] = friends, g_shown_side[1] = s.side[1], g_shown_friends = friends, g_shown_foes = s.side[1];
+    g_shown_told[0] = 0.0f, g_shown_told[1] = g_ai ? -1.0f : 0.0f, g_shown_count = -1.0f, g_shown_banner = 0;
 }
 
 
@@ -434,8 +474,10 @@ void lock(Sim& s) {
 // bursts when it has the player in its sights (aiming ahead of it, with a
 // spread: wider the more the player manoeuvres, and for the worse pilots),
 // breaks away when it comes too near, and jinks when the player sits on its
-// own tail. `manoeuvre`: how hard the player is turning, 0..1
-void pilots(Sim& s, float manoeuvre, float dt) {
+// own tail. `manoeuvre`: how hard the player is turning, 0..1. `calm`: no
+// fight yet, or none left: the enemy flies straight on and the friends keep
+// beside the player
+void pilots(Sim& s, bool calm, float manoeuvre, float dt) {
     // Who attacks the player: the nearest few enemies
     std::vector<std::pair<float, Ship*>> foes;
     int friends = 0;
@@ -450,7 +492,7 @@ void pilots(Sim& s, float manoeuvre, float dt) {
     std::sort(foes.begin(), foes.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     // (one while the sides are even: the player is one of several to go for;
     // more as the friends fall, and none once the player has)
-    const int attackers = s.over ? 0 : std::clamp(int(foes.size()) - friends, 1, ATTACKERS);
+    const int attackers = s.over || calm ? 0 : std::clamp(int(foes.size()) - friends, 1, ATTACKERS);
     for (size_t i = 0; i < foes.size(); i++) {
         foes[i].second->ai.engaged = i < size_t(attackers);
         foes[i].second->ai.passer = i == 1;
@@ -470,6 +512,10 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         const bool enemy = foe(ship);
         if (!enemy && !friendly(ship)) continue;
         ai.bored -= dt;
+        if (calm) {
+            ai = Ship::Pilot{.skill = ai.skill};
+            continue;
+        }
         Ship* prey = find(ai.prey);
         if (enemy && ai.engaged) {
             ai.prey = 0;
@@ -517,6 +563,10 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         const bool enemy = foe(ship);
         if (!enemy && !friendly(ship)) continue;
         Ship::Pilot& ai = ship.ai;
+        if (calm && enemy) {
+            ship.speed = INTRO_SPEED, ship.pos = ship.pos + ship.at.fwd * (INTRO_SPEED * dt);
+            continue;
+        }
         // What it goes for: the player, or another ship; none: an enemy
         // circles the player, a friend flies beside the player
         const Ship* prey = find(ai.prey);
@@ -531,7 +581,8 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         // Where a bolt fired now would meet it
         Vec lead = quarry + quarry_fwd * (quarry_speed * dist / TIE_BOLT);
         // Each kind's best: the X-wing's pilots get what the TIE's do (the sides are even), the Y-wing is heavy, the Falcon between
-        const float top = enemy || ship.shape == &XWING ? TIE_MAX : ship.shape == &YWING ? 115.0f : 145.0f;
+        // (a friend coming up from behind to join the squadron flies faster than any fights)
+        const float top = calm ? 260.0f : enemy || ship.shape == &XWING ? TIE_MAX : ship.shape == &YWING ? 115.0f : 145.0f;
         const float rate = enemy || ship.shape == &XWING ? TIE_TURN : ship.shape == &YWING ? 0.8f : 0.95f;
         Vec want = dir;
         float want_speed = top;
@@ -602,11 +653,11 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         } else {
             // No enemy to go for: beside the player, each in its own place
             float side = (ship.id & 1 ? 1.0f : -1.0f) * (40.0f + 25.0f * float(ship.id % 3));
-            Vec at = s.pos + s.at.right * side + s.at.down * (8.0f * float(ship.id % 4) - 12.0f) + s.at.fwd * (80.0f + s.speed * 1.5f);
+            Vec at = s.pos + s.at.right * side + s.at.down * (8.0f * float(ship.id % 4) - 12.0f) + s.at.fwd * (calm ? 50.0f + 28.0f * float(ship.id % 5) : 80.0f + s.speed * 1.5f);
             Vec gap = at + ship.pos * -1;
             float far = std::sqrt(dot(gap, gap));
             want = unit(unit(gap) * std::min(1.0f, far / 150.0f) + s.at.fwd * std::max(0.0f, 1 - far / 150.0f) + s.at.fwd * 0.2f);
-            want_speed = s.speed + std::clamp(dot(gap, s.at.fwd) * 0.4f, -40.0f, 60.0f);
+            want_speed = s.speed + std::clamp(dot(gap, s.at.fwd) * 0.4f, -40.0f, calm ? 160.0f : 60.0f);
             ai.aimed = 0;
         }
         // Clear of the capital ships
@@ -684,12 +735,10 @@ void step(float dt) {
     Sim& s = g_sim;
     if (c.absolute) s.throttle = std::clamp(c.throttle.load(), 0.0f, 1.0f);
     else s.throttle = std::clamp(s.throttle + c.throttle * 0.6f * dt, 0.0f, 1.0f);
-    // Flying in: the throttle is held where every fighter's is
-    const bool flying_in = s.intro > 0;
-    if (flying_in) {
-        s.intro -= dt;
-        s.throttle = (INTRO_SPEED - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
-    }
+    // Before the fight the throttle is held where every fighter's is
+    const bool calm = g_ai && s.stage != Sim::FIGHT && !s.over;
+    const bool flying_in = calm && s.stage != Sim::CLEAR;
+    if (flying_in) s.throttle = (INTRO_SPEED - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
     float target = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * s.throttle;
     // The braking turn: held, with charge left (and not begun on an empty one)
     // (run out, it is over until the button is let go: the charge comes back then)
@@ -754,12 +803,8 @@ void step(float dt) {
     if (c.view && !s.view_was) dogfight_cockpit_toggle();
     s.view_was = c.view;
     // (a braking turn counts as the hardest of manoeuvres)
-    if (g_ai && flying_in) {
-        // (every fighter straight on at the one speed, towards the other side)
-        for (Ship& ship : s.ships)
-            if (ship.shape->hits) ship.speed = INTRO_SPEED, ship.pos = ship.pos + ship.at.fwd * (INTRO_SPEED * dt);
-    } else if (g_ai) pilots(s, std::clamp((std::fabs(c.pitch.load()) + std::fabs(c.yaw.load())) * (s.drifting ? 2.0f : 1.0f), 0.0f, 1.0f), dt);
-    cannons(s, c.fire && s.over != DOGFIGHT_DEFEAT && !flying_in, dt);
+    if (g_ai) pilots(s, calm, std::clamp((std::fabs(c.pitch.load()) + std::fabs(c.yaw.load())) * (s.drifting ? 2.0f : 1.0f), 0.0f, 1.0f), dt);
+    cannons(s, c.fire && s.over != DOGFIGHT_DEFEAT && !(s.stage == Sim::DETECTED || s.stage == Sim::COUNT), dt);
     // The friends' lines, when their moment comes
     s.voice_rest -= dt, s.message_left -= dt;
     if (s.say && (s.say_in -= dt) <= 0) {
@@ -770,42 +815,80 @@ void step(float dt) {
     // The shields come back when nothing has hit for a while, the slower the
     // fewer ships are left (not at all with four or fewer, so the last ones
     // fall to the hits they take) and the longer the match has lasted
-    int friends = 1, foes = 0;
-    for (const Ship& ship : s.ships) friends += ship.shape == &XWING, foes += foe(ship);
-    if (s.over == DOGFIGHT_DEFEAT) friends--;
+    int friends = friends_left(s), foes = 0;
+    for (const Ship& ship : s.ships) foes += foe(ship);
     if (s.left[0] >= 0 && friends < s.left[0]) s.fell[0] = s.time;
     // The last friend has fallen: the player is told, on the view and the screen
     if (s.left[0] > 1 && friends == 1 && foes > 0 && !s.over) s.message = DOGFIGHT_ALONE, s.message_left = 4.5f, s.say = 0;
     if (s.left[1] >= 0 && foes < s.left[1]) s.fell[1] = s.time;
     s.left[0] = friends, s.left[1] = foes;
-    s.regen = std::clamp(float(friends + foes - 4) / float(std::max(1, s.total - 4)), 0.0f, 1.0f) * std::clamp(1 - (s.took - WANE_FROM - 5.0f * float(s.total)) / WANE_FOR, 0.0f, 1.0f);
+    s.regen = calm ? 1.0f : std::clamp(float(friends + foes - 4) / float(std::max(1, s.total - 4)), 0.0f, 1.0f) * std::clamp(1 - (s.fought - WANE_FROM - 5.0f * float(s.total)) / WANE_FOR, 0.0f, 1.0f);
     s.unhurt += dt;
     if (s.unhurt > SHIELD_WAIT) s.shield = std::min(1.0f, s.shield + SHIELD_BACK * s.regen * dt);
     for (Ship& ship : s.ships) {
         ship.unhurt += dt;
         if (ship.unhurt > SHIELD_WAIT) ship.shield = std::min(1.0f, ship.shield + SHIELD_BACK * s.regen * dt);
     }
-    // The match is over when the player falls or no enemy is left; the next
-    // begins after a moment
+    // The round goes through its stages; the run is over when the player
+    // falls or the last round's last enemy does, and the next begins after a moment
     if (!s.over) {
-        if (!flying_in) s.took += dt;
+        s.stage_time += dt;
+        auto to = [&](Sim::Stage stage) { s.stage = stage, s.stage_time = 0; };
         if (s.shield <= 0.001f) {
             s.over = DOGFIGHT_DEFEAT, s.over_left = DEFEAT_TIME;
             s.shield = 0, s.target = 0, s.threat = 0, s.warning = false;
             s.say = 0;
             s.sway[0] += 0.05f, s.sway[2] += 0.12f, s.sway[5] -= 0.03f;
-        } else if (g_ai && foes == 0) {
-            s.over = DOGFIGHT_VICTORY, s.over_left = g_round < ROUNDS ? 5.5f : 9.0f;
-            s.say = 0, s.voice_rest = 0;
-            say(s, DOGFIGHT_VOICE_CHEER, 1.0f);
+        } else if (!g_ai) {
+            s.took += dt, s.fought += dt;
+        } else if (s.stage == Sim::MUSTER && s.stage_time >= s.wait) {
+            to(Sim::DETECTED);
+            enemy_arrives(s, 2900);
+            s.sounds |= DOGFIGHT_SOUND_LOCK;
+        } else if (s.stage == Sim::DETECTED) {
+            if (s.told[1] < 0 && s.stage_time >= TOLD) s.told[1] = s.time;
+            if (s.stage_time >= DETECTED) to(Sim::COUNT), s.sounds |= DOGFIGHT_SOUND_LOCK;
+        } else if (s.stage == Sim::COUNT) {
+            // (a chime for every second counted)
+            if (int(s.stage_time) != int(s.stage_time - dt) && s.stage_time < COUNTDOWN) s.sounds |= DOGFIGHT_SOUND_LOCK;
+            if (s.stage_time >= COUNTDOWN) {
+                // The fight: every shield whole again
+                to(Sim::FIGHT);
+                s.shield = 1, s.fought = 0, s.total = friends + foes;
+                for (Ship& ship : s.ships) ship.shield = 1;
+            }
+        } else if (s.stage == Sim::FIGHT) {
+            s.took += dt, s.fought += dt;
+            if (foes == 0) {
+                s.say = 0, s.voice_rest = 0;
+                say(s, DOGFIGHT_VOICE_CHEER, 1.0f);
+                if (g_round < ROUNDS) to(Sim::CLEAR);
+                else s.over = DOGFIGHT_VICTORY, s.over_left = 9.0f;
+            }
+        } else if (s.stage == Sim::CLEAR && s.stage_time >= CLEAR) {
+            to(Sim::REINFORCE);
+            g_round++;
+            s.before = friends, s.told[1] = -1;
+            friends_arrive(s, std::max(friends_for(g_round), friends + 2));
+            s.sounds |= DOGFIGHT_SOUND_LOCK;
+        } else if (s.stage == Sim::REINFORCE) {
+            // (there when the last of them is near the player, or has had long enough)
+            bool there = true;
+            for (const Ship& ship : s.ships) {
+                Vec d = ship.pos + s.pos * -1;
+                there &= ship.shape != &XWING || dot(d, d) < 380.0f * 380.0f;
+            }
+            if (there || s.stage_time > 12) {
+                to(Sim::MUSTER);
+                s.wait = rnd(3, 7), s.told[0] = s.time, s.side[0] = friends;
+                s.sounds |= DOGFIGHT_SOUND_LOCK;
+            }
         }
     } else if ((s.over_left -= dt) <= 0) {
-        // The next round, with what this one added; or, the run lost or won, the first again
-        const bool on = s.over == DOGFIGHT_VICTORY && g_round < ROUNDS;
-        g_run_kills = on ? g_run_kills + s.kills : 0;
-        g_run_took = on ? g_run_took + s.took : 0;
-        g_round = on ? g_round + 1 : 1;
+        // The run lost or won: the first round again
+        g_round = 1;
         reset();
+        return;
     } else if (s.over == DOGFIGHT_DEFEAT) {
         // The player's ship blows up round the eye: a few of the game's
         // explosions one after another, just ahead, that go with the ship
@@ -831,14 +914,17 @@ void step(float dt) {
     }
     for (Blast& b : s.blasts) b.frame += 45.0f * dt;   // the fireball: a second
     s.blasts.erase(std::remove_if(s.blasts.begin(), s.blasts.end(), [](const Blast& b) { return b.frame > 46.0f; }), s.blasts.end());
-    g_shown_ships = int(s.ships.size()), g_shown_kills = g_run_kills + s.kills;
+    g_shown_ships = int(s.ships.size()), g_shown_kills = s.kills;
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
     g_shown_locked = s.target != 0;
     g_shown_message = s.message_left > 0 ? s.message : 0;
     g_shown_push = s.push, g_shown_charge = s.charge;
     g_shown_shield = std::max(0.0f, s.shield), g_shown_warning = s.warning;
-    g_shown_intro = s.intro > 0 ? INTRO - s.intro : -1.0f;
-    g_shown_result = s.over, g_shown_friends = friends, g_shown_foes = foes, g_shown_took = g_run_took + s.took;
+    g_shown_round = std::clamp(g_round, 1, ROUNDS);
+    for (int k = 0; k < 2; k++) g_shown_told[k] = s.told[k] < 0 ? -1.0f : float(s.time - s.told[k]), g_shown_side[k] = s.side[k];
+    g_shown_count = calm && s.stage == Sim::COUNT ? COUNTDOWN - s.stage_time : -1.0f;
+    g_shown_banner = !calm ? 0 : s.stage == Sim::DETECTED ? DOGFIGHT_BANNER_ENEMIES : s.stage == Sim::CLEAR ? DOGFIGHT_BANNER_CLEAR : s.stage == Sim::REINFORCE ? DOGFIGHT_BANNER_REINFORCEMENTS : 0;
+    g_shown_result = s.over, g_shown_friends = calm && s.stage == Sim::REINFORCE ? s.before : friends, g_shown_foes = foes, g_shown_took = s.took;
     float target_shield = -1;
     for (const Ship& ship : s.ships)
         if (s.target && ship.id == s.target) target_shield = std::max(0.0f, ship.shield);
@@ -857,7 +943,7 @@ void step(float dt) {
 void dogfight_reset() {
     dogfight_cockpit_load("models/cockpit");
     g_seed = g_first_seed;   // (the first match always the same; the ones after it as they fall)
-    g_round = 1, g_run_kills = 0, g_run_took = 0;
+    g_round = 1;
     reset();
 }
 void dogfight_step(float dt) { step(dt); }
@@ -878,8 +964,9 @@ int dogfight_result() { return g_shown_result; }
 int dogfight_left(bool foes) { return foes ? g_shown_foes : g_shown_friends; }
 float dogfight_target_shield() { return g_shown_target_shield; }
 float dogfight_took() { return g_shown_took; }
-float dogfight_intro() { return g_shown_intro; }
-float dogfight_intro_time() { return INTRO; }
+float dogfight_told(bool foes) { return g_shown_told[foes ? 1 : 0]; }
+float dogfight_countdown() { return g_shown_count; }
+int dogfight_banner() { return g_shown_banner; }
 int dogfight_side(bool foes) { return g_shown_side[foes ? 1 : 0]; }
 float dogfight_flash() { return g_shown_flash; }
 float dogfight_dark() { return g_shown_dark; }

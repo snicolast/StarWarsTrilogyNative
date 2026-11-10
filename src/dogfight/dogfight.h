@@ -70,11 +70,15 @@ int dogfight_result();
 int dogfight_left(bool foes);
 float dogfight_target_shield();
 float dogfight_took();
-// A match begins with a moment of flying in, both sides at one speed and no
-// one firing: the seconds of it gone (-1: not in it) and how long it lasts
-float dogfight_intro();
-float dogfight_intro_time();
-int dogfight_side(bool foes);   // fighters of each side at the start (drawn anew for every match)
+// A round before its fight, both sides at one speed and no one firing: each
+// side's number is told in its turn (the seconds since it last was; -1: not
+// yet, and it is not shown), a line stands on the view meanwhile (0: none),
+// and the last seconds are counted down (those left; -1: no count)
+enum { DOGFIGHT_BANNER_REINFORCEMENTS = 1, DOGFIGHT_BANNER_ENEMIES = 2, DOGFIGHT_BANNER_CLEAR = 3 };
+float dogfight_told(bool foes);
+int dogfight_banner();
+float dogfight_countdown();
+int dogfight_side(bool foes);   // fighters of each side when its number was told (drawn anew for every round)
 // The player's fall on the view: a red flash (1 at the first blast, soon 0), then how far it has gone to black (0..1)
 float dogfight_flash();
 float dogfight_dark();

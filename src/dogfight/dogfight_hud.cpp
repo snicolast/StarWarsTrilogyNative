@@ -63,13 +63,8 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
         cv.box(0, 0, w, h, veil);
     }
     if (const int result = dogfight_result(); result == DOGFIGHT_VICTORY || dark >= 0.8f) {
-        // (a round won that is not the last: said smaller, the run goes on)
-        char clear[24];
-        snprintf(clear, sizeof(clear), "ROUND %d CLEAR", dogfight_round());
-        const bool more = result == DOGFIGHT_VICTORY && dogfight_round() < dogfight_rounds();
-        const char* words = more ? clear : result == DOGFIGHT_VICTORY ? "VICTORY" : "DEFEATED";
-        const int size = more ? 3 : 4;
-        cv.text((w - 6 * size * int(strlen(words))) / 2, h / 2 - 60, words, YELLOW, size);
+        const char* words = result == DOGFIGHT_VICTORY ? "VICTORY" : "DEFEATED";
+        cv.text((w - 6 * 4 * int(strlen(words))) / 2, h / 2 - 60, words, YELLOW, 4);
         char line[48];
         const int took = int(dogfight_took());
         snprintf(line, sizeof(line), "KILLS %d   TIME %d:%02d", dogfight_kills(), took / 60, took % 60);
@@ -82,20 +77,36 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
         if (++blink / 8 % 2 == 0) cv.text((w - 6 * 2 * int(strlen(words))) / 2, 92, words, YELLOW, 2);
     }
     if (dogfight_cockpit_on()) return;   // the cockpit's screen shows the rest instead
-    // A match's start: how many against how many, across the top (with a
-    // cockpit its hologram says it)
-    if (const float intro = dogfight_intro(); intro >= 0.3f && (intro < dogfight_intro_time() - 0.6f || std::fmod(intro, 0.2f) < 0.12f)) {
-        char mine[8], theirs[8];
-        snprintf(mine, sizeof(mine), "%d", dogfight_side(false));
-        snprintf(theirs, sizeof(theirs), "%d", dogfight_side(true));
-        const int size = 4, wide = 6 * size * int(strlen(mine) + strlen(theirs)) + 6 * 2 * 4;
-        char round[24];
-        if (dogfight_round() >= dogfight_rounds()) snprintf(round, sizeof(round), "FINAL ROUND");
-        else snprintf(round, sizeof(round), "ROUND %d", dogfight_round());
-        cv.text((w - 6 * 2 * int(strlen(round))) / 2, 46, round, YELLOW, 2);
-        int at = cv.text((w - wide) / 2, 70, mine, GREEN, size);
-        at = cv.text(at + 6, 70 + 7 * (size - 2), " VS ", YELLOW, 2);
-        cv.text(at + 6, 70, theirs, 0xFFFF4030u, size);
+    // Before a round's fight, across the top (with a cockpit its hologram
+    // says it): what is going on, each side's number as it is told, and the
+    // seconds to the fight counted down under the round
+    if (!dogfight_result()) {
+        static int blink = 0;
+        blink++;
+        auto centred = [&](int y, const char* words, uint32_t color, int size) { cv.text((w - 6 * size * int(strlen(words))) / 2, y, words, color, size); };
+        char words[32];
+        if (const int banner = dogfight_banner(); banner && blink / 6 % 4 != 3) {
+            if (banner == DOGFIGHT_BANNER_CLEAR) snprintf(words, sizeof(words), "ROUND %d CLEAR", dogfight_round());
+            else snprintf(words, sizeof(words), "%s", banner == DOGFIGHT_BANNER_ENEMIES ? "ENEMIES DETECTED" : "REINFORCEMENTS ARE COMING");
+            centred(46, words, banner == DOGFIGHT_BANNER_ENEMIES ? 0xFFFF4030u : YELLOW, 2);
+        }
+        const float count = dogfight_countdown();
+        if (count > 0) {
+            if (dogfight_round() >= dogfight_rounds()) snprintf(words, sizeof(words), "FINAL ROUND");
+            else snprintf(words, sizeof(words), "ROUND %d", dogfight_round());
+            centred(46, words, YELLOW, 2);
+        }
+        bool telling = false;
+        for (int k = 0; k < 2; k++)
+            if (const float told = dogfight_told(k == 1); told >= 0.2f && told < 2.0f) {
+                snprintf(words, sizeof(words), "%d %s", dogfight_side(k == 1), k ? "TIE FIGHTERS" : "X-WINGS");
+                centred(70, words, k ? 0xFFFF4030u : GREEN, 3);
+                telling = true;
+            }
+        if (count > 0 && !telling) {
+            snprintf(words, sizeof(words), "%d", int(std::ceil(count)));
+            centred(70, words, YELLOW, 5);
+        }
     }
     // Bottom left: the fighters left on each side, the shield, SPEED and its
     // number, the throttle as a bar under it
