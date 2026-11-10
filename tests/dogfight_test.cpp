@@ -90,13 +90,13 @@ int main() {
         fly(0, 0, 0, 0, 3);
         CHECK(dogfight_scene()->beams.empty());
         // The target lock: a press takes an enemy and marks it (brackets and
-        // an arrow: ten lines); another press, another enemy
+        // an arrow, ten lines, and the distance's 28 strokes); another press, another enemy
         CHECK(!dogfight_locked() && dogfight_scene()->marks.empty());
         g_dogfight_controls.lock = true;
         dogfight_step(1.0f / 60);
         g_dogfight_controls.lock = false;
         dogfight_step(1.0f / 60);
-        CHECK(dogfight_locked() && dogfight_scene()->marks.size() == 10 * 6);
+        CHECK(dogfight_locked() && dogfight_scene()->marks.size() == 38 * 6);
         for (const auto& v : dogfight_scene()->marks) CHECK(v.pos[2] < 0 && v.pos[2] > -0.3f);
         // Chasing the nearest TIE fighter and firing at it: it blows up
         const int before = dogfight_ships();

@@ -319,12 +319,14 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
     // Always the same number of triangles (the display goes from one frame's
     // to the next's): what is not shown is drawn with no size
     const bool front = ahead > 0.05f;
+    float bracket = 0;   // its half size
     {
         Vec v{right, up, -ahead};
         Vec r = unit(Vec{1, 0, 0} + v * -v.x);
         Vec u = cross(r, v) * -1;
         if (u.y < 0) u = u * -1;
         float half = D * std::max(ship->shape->radius * 1.8f / dist, 0.014f);
+        bracket = half;
         // on it: the nose points inside the bracket
         bool on = front && std::sqrt(right * right + up * up) < half / D;
         float arm = front ? half * 0.45f : 0, wide = front ? D * 0.0018f : 0;
@@ -346,6 +348,26 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
         Vec tip = p + e * size;
         line(tip, p + e * (-size * 0.4f) + side * (size * 0.8f), wide, YELLOW);
         line(tip, p + e * (-size * 0.4f) + side * (-size * 0.8f), wide, YELLOW);
+        // Its distance in small figures: inside the arrow, or under the
+        // bracket when there is no arrow. Seven strokes a figure, four
+        // figures, so their number never changes either
+        const float high = D * 0.011f, across = high * 0.55f, gap = high * 0.35f;
+        Vec at = out ? p + e * (-size * 2.4f) : front ? Vec{right, up, -ahead} * D + Vec{0, -(bracket + high * 1.6f), 0} : Vec{0, 0, -D};
+        char digits[8];
+        int n = snprintf(digits, sizeof(digits), "%d", std::clamp(int(dist + 0.5f), 0, 9999));
+        static const uint8_t strokes[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bit 0 the top, then clockwise, bit 6 the middle
+        const uint32_t FAINT = 0xFF2090A0u;
+        const bool shown = out || front;
+        for (int k = 0; k < 4; k++) {
+            uint8_t lit = shown && k < n ? strokes[digits[k] - '0'] : 0;
+            float x0 = at.x + (float(k) - float(n) * 0.5f) * (across + gap) + gap * 0.5f, x1 = x0 + across;
+            float y1 = at.y + high * 0.5f, ym = at.y, y0 = at.y - high * 0.5f;
+            const float seg[7][4] = {{x0, y1, x1, y1}, {x1, y1, x1, ym}, {x1, ym, x1, y0}, {x0, y0, x1, y0}, {x0, ym, x0, y0}, {x0, y1, x0, ym}, {x0, ym, x1, ym}};
+            for (int j = 0; j < 7; j++) {
+                bool is = lit >> j & 1;
+                line(Vec{seg[j][0], seg[j][1], at.z}, Vec{is ? seg[j][2] : seg[j][0], is ? seg[j][3] : seg[j][1], at.z}, is ? D * 0.0014f : 0, FAINT);
+            }
+        }
     }
 }
 
