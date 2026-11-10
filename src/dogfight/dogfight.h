@@ -28,8 +28,6 @@ struct DogfightControls {
     std::atomic<float> throttle{0};   // + faster, - slower (a rate), unless `absolute`
     std::atomic<bool> absolute{false};   // a throttle lever: `throttle` is its position, 0..1
     std::atomic<bool> fire{false};       // the cannons, while held
-    // Trying the game's sounds out (for now): keys 1 to 6 ask for one each; 0: none
-    std::atomic<int> audition{0};
     // The braking turn, while held: the engines cut, the ship slows fast and
     // turns near twice as tight, while its charge lasts
     std::atomic<bool> drift{false};
@@ -68,7 +66,8 @@ void dogfight_set_ai(bool on);
 enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4, DOGFIGHT_SOUND_DAMAGE = 8, DOGFIGHT_SOUND_TIE = 16, DOGFIGHT_SOUND_HURT = 32, DOGFIGHT_SOUND_SAVED = 64,
        // The friends' voices (the game's own lines): thanks from one the player saved,
        // a cheer for a good kill, a call for help from one that cannot shake an enemy off
-       DOGFIGHT_VOICE_THANKS = 128, DOGFIGHT_VOICE_CHEER = 256, DOGFIGHT_VOICE_HELP = 512 };
+       DOGFIGHT_VOICE_THANKS = 128, DOGFIGHT_VOICE_CHEER = 256, DOGFIGHT_VOICE_HELP = 512,
+       DOGFIGHT_SOUND_LOCK = 1024 };   // the target lock took a ship
 // What was last said, for the screen to show a moment: 0 nothing, or one of the DOGFIGHT_VOICE_* / DOGFIGHT_SOUND_SAVED
 int dogfight_message();
 int dogfight_take_sounds();

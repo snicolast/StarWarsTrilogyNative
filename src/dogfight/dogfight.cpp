@@ -328,7 +328,7 @@ void lock(Sim& s) {
         float c = dot(unit(ship.pos + s.pos * -1), s.at.fwd);
         if (c > best_cos) best_cos = c, best = &ship;
     }
-    if (best) s.target = best->id;
+    if (best) s.target = best->id, s.sounds |= DOGFIGHT_SOUND_LOCK;
 }
 
 // The enemy fighters fly by the rules the player does (a speed, a turn rate,
@@ -663,7 +663,7 @@ void step(float dt) {
     }
     if (c.lock && !s.lock_was) lock(s);
     s.lock_was = c.lock;
-    if (c.lock_threat && !s.threat_was && s.threat) s.target = s.threat;   // the lock on the one attacking
+    if (c.lock_threat && !s.threat_was && s.threat) s.target = s.threat, s.sounds |= DOGFIGHT_SOUND_LOCK;   // the lock on the one attacking
     s.threat_was = c.lock_threat;
     // (a braking turn counts as the hardest of manoeuvres)
     if (g_ai) pilots(s, std::clamp((std::fabs(c.pitch.load()) + std::fabs(c.yaw.load())) * (s.drifting ? 2.0f : 1.0f), 0.0f, 1.0f), dt);

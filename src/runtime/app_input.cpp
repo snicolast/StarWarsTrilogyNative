@@ -428,12 +428,6 @@ static void dogfight_controls(bool focused) {
         lock |= key('T') || key(VK_RBUTTON);
         threat |= key('R');
         drift |= key(VK_SHIFT);
-        static bool was[6] = {};
-        for (int k = 0; k < 6; k++) {
-            bool down = key('1' + k);
-            if (down && !was[k]) c.audition = k + 1;
-            was[k] = down;
-        }
         if (!any_pad && kx == 0 && ky == 0) {   // the mouse (the lever it moves), past a dead zone round the middle
             auto axis = [](int adc) {
                 float v = float(adc - 128) / 127.0f, m = std::fabs(v);

@@ -1211,10 +1211,8 @@ static void dogfight_sounds(int which) {
                 for (uint8_t b : bytes[k]) g_sound.midi_write(b);
         return;
     }
-    // (for now: keys 1 to 6 play commands that look like the pilots' voices, to tell which is which)
-    if (int key = g_dogfight_controls.audition.exchange(0)) {
-        static const uint8_t what[6][2] = {{0x2E, 0x17}, {0x2E, 0x21}, {0x2E, 0x2B}, {0x2E, 0x33}, {0x24, 0x10}, {0x24, 0x21}};
-        const uint8_t m[3] = {0xA0, what[key - 1][0], what[key - 1][1]};
+    if (which & DOGFIGHT_SOUND_LOCK) {   // (a short chime of the game's, heard as "like a coin going in")
+        const uint8_t m[3] = {0xA0, 0x24, 0x10};
         for (uint8_t b : m) g_sound.midi_write(b);
     }
     static unsigned shots = 0, kills = 0, hits = 0, ties = 0;
