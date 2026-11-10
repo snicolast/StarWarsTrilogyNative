@@ -128,6 +128,16 @@ struct R3DScene {
     std::shared_ptr<const std::vector<float>> casters;
     float casters_m[12] = {}, casters_was[12] = {};
     float exposure_average = 0;   // R3DNativeScene::exposure_average
+    // A native scene's explosions (R3DNativeScene::blasts) in view space,
+    // now and in the frame before, and the node of the viewport they are in:
+    // r3d_swt_explosions draws them as it does the game's own
+    struct Blast {
+        float at[3], was[3];
+        float radius;
+        int frame;
+    };
+    std::vector<Blast> blasts;
+    uint32_t blast_viewport = 0;
 };
 
 class R3DSceneBuilder {
@@ -248,6 +258,8 @@ private:
     bool view_drawn_ = false;
     const R3DNativeScene* native_ = nullptr;   // the frame being built is the PC's own scene (R3DFrameState::native)
     uint32_t native_viewport_ = 0;             // the viewport node its objects were drawn in
+    float native_view_was_[16] = {};           // its view in the frame before (where its explosions were)
+    uint64_t native_view_frame_ = 0;
     std::shared_ptr<const std::vector<R3DNativeScene::Mesh>> fixed_src_;   // native_fixed: the meshes fixed_ was made from
     std::vector<R3DVertex> fixed_;                                         // ... as vertices, kept from frame to frame
     float fixed_m_[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};   // where they stood in the previous frame

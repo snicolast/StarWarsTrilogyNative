@@ -273,6 +273,7 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
             st.fly[0] = live ? lx : 0, st.fly[1] = live ? ly : 0, st.fly[2] = live ? rx : 0, st.fly[3] = live ? ry : 0;
             st.fly_triggers[0] = live ? float(SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER)) / 32767.0f : 0;
             st.fly_triggers[1] = live ? float(SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)) / 32767.0f : 0;
+            st.fly_fire = live && (now_down[SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER] || now_down[SDL_GAMEPAD_BUTTON_SOUTH]);
         }
         stick(p, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, ax, ay, tilt);
         const float inv_x = set.invert & 1 ? -1.0f : 1.0f, inv_y = set.invert & 2 ? -1.0f : 1.0f;   // not in the menus
@@ -401,6 +402,7 @@ void Gamepads::poll_joystick(Slot& s, PadState& st, const GamepadSettings& set, 
     for (bool d : now_down) any |= d;
     if (any && focused) st.last_used = now_;
 
+    st.fly_fire = focused && !menu && now_down[0];
     if (!focused) {
         st.fire = st.reload = st.event = false;
     } else if (menu) {

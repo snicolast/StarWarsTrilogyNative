@@ -5,7 +5,8 @@
 // models where this simulation puts them, seen by its camera), a frame every
 // 1/60 s published as the game's would be.
 //
-// So far: free flight (pitch, yaw, roll, throttle) among ships standing still.
+// So far: free flight (pitch, yaw, roll, throttle) among ships standing still,
+// and the X-wing's four cannons: the TIE fighters blow up after a few hits.
 #pragma once
 #include <atomic>
 #include <cstdint>
@@ -23,6 +24,7 @@ struct DogfightControls {
     std::atomic<float> roll{0};       // + right wing down
     std::atomic<float> throttle{0};   // + faster, - slower (a rate), unless `absolute`
     std::atomic<bool> absolute{false};   // a throttle lever: `throttle` is its position, 0..1
+    std::atomic<bool> fire{false};       // the cannons, while held
 };
 extern DogfightControls g_dogfight_controls;
 
@@ -38,6 +40,7 @@ float dogfight_throttle();
 // follows the throttle with the ship's inertia
 float dogfight_speed_part();
 int dogfight_ships();
+int dogfight_kills();       // TIE fighters shot down in this flight
 float dogfight_nearest();   // distance to the nearest ship (0: none)
 // Its HUD into the game's 2D front layer (w x h BGRA, alpha in the top byte;
 // any thread: it reads the numbers above)

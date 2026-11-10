@@ -58,6 +58,7 @@ struct PadState {
     // zone (left x, y, right x, y; a flight stick: its x, y and twist), the
     // triggers 0..1, and a flight stick's throttle lever 0..1 (has_throttle)
     float fly[4] = {}, fly_triggers[2] = {}, fly_throttle = 0;
+    bool fly_fire = false;   // DOGFIGHT's cannons: right shoulder or A (the triggers are its throttle); a flight stick's trigger
     bool has_throttle = false;
 };
 

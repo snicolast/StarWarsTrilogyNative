@@ -411,9 +411,14 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway)
     Display d{g_cockpit.panel, scene.lights, 100 * g_cockpit.panel.aspect, 100};
     d.box(0, 0, d.w, d.h, GROUND, 0);
     const float x = 12, wide = d.w - 2 * x;
-    d.text(x, 9, "FREE FLIGHT", GREEN);
-    d.box(x, 19, x + wide, 20, DIM);
     char number[32];
+    if (dogfight_kills() > 0) {
+        snprintf(number, sizeof(number), "KILLS %d", dogfight_kills());
+        d.text(x, 9, number, YELLOW);
+    } else {
+        d.text(x, 9, "FREE FLIGHT", GREEN);
+    }
+    d.box(x, 19, x + wide, 20, DIM);
     d.text(x, 26, "SPEED", GREEN);
     snprintf(number, sizeof(number), "%03d", std::clamp(int(dogfight_speed() + 0.5f), 0, 999));
     d.text(x + 40, 23, number, YELLOW, 2);

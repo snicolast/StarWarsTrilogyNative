@@ -36,6 +36,23 @@ struct R3DNativeScene {
         uint32_t key = 0;          // the same from frame to frame (interpolation)
     };
     std::vector<Item> items;
+    // Streaks of light in the world (cannon bolts): from a to b, as wide as
+    // said, glowing in their colour round a white-hot middle
+    struct Beam {
+        float a[3] = {}, b[3] = {};
+        float width = 0.7f;
+        uint32_t color = 0xFF3040FFu;   // RGBA8, R in the low byte
+        uint32_t key = 0;               // the same from frame to frame
+    };
+    std::vector<Beam> beams;
+    // Explosions in the world, drawn by r3d_explosions.cpp as the game's own
+    // are: `frame` is the frame of the game's sprite it would be showing (2..46)
+    struct Blast {
+        float pos[3] = {};
+        float radius = 1;
+        int frame = 2;
+    };
+    std::vector<Blast> blasts;
     // Things of the PC's own fixed to the camera, drawn over the scene (the
     // cockpit of src/dogfight/dogfight_cockpit.cpp). In view space: x right,
     // y up, -z ahead, in the world's units

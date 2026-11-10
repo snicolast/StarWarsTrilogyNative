@@ -396,11 +396,13 @@ static std::vector<AimTarget> aim_targets() {
 // DOGFIGHT's controls: left stick (or a flight stick, the arrow keys, or the
 // mouse away from the middle of the window when there is no pad) pitch and
 // yaw, right stick's x (the twist, A / D) roll, the triggers (W / S) faster
-// and slower, a flight stick's own lever the throttle itself
+// and slower, a flight stick's own lever the throttle itself; the cannons on
+// the right shoulder or A, a flight stick's trigger, the space bar or the mouse
 static void dogfight_controls(bool focused) {
     DogfightControls& c = g_dogfight_controls;
     float pitch = 0, yaw = 0, roll = 0, throttle = 0;
     bool absolute = false, any_pad = false;
+    bool fire = false;
     if (focused && !g_menu_open) {
         for (int i = 0; i < Gamepads::MAX; i++) {
             const PadState& pad = g_pads.pad(i);
@@ -409,6 +411,7 @@ static void dogfight_controls(bool focused) {
             yaw += pad.fly[0], pitch += pad.fly[1], roll += pad.fly[2];   // (stick back = nose up)
             throttle += pad.fly_triggers[1] - pad.fly_triggers[0];
             if (pad.has_throttle) absolute = true, throttle = pad.fly_throttle;
+            fire |= pad.fly_fire;
         }
         if (g_pad_settings.invert & 2) pitch = -pitch;
         auto key = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
@@ -416,6 +419,7 @@ static void dogfight_controls(bool focused) {
         yaw += kx, pitch += ky;
         roll += float(key('D')) - float(key('A'));
         if (!absolute) throttle += float(key('W')) - float(key('S'));
+        fire |= key(VK_SPACE) || key(VK_LBUTTON);
         if (!any_pad && kx == 0 && ky == 0) {   // the mouse (the lever it moves), past a dead zone round the middle
             auto axis = [](int adc) {
                 float v = float(adc - 128) / 127.0f, m = std::fabs(v);
@@ -426,6 +430,7 @@ static void dogfight_controls(bool focused) {
     }
     c.pitch = std::clamp(pitch, -1.0f, 1.0f), c.yaw = std::clamp(yaw, -1.0f, 1.0f), c.roll = std::clamp(roll, -1.0f, 1.0f);
     c.absolute = absolute;
+    c.fire = fire;
     c.throttle = absolute ? throttle : std::clamp(throttle, -1.0f, 1.0f);
 }
 

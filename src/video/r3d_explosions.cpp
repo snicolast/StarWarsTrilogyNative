@@ -136,6 +136,7 @@ struct Found {
     float fog;
     uint32_t viewport;   // index in out.viewports
     std::vector<uint32_t> trans, opaque;   // first vertex of each of its triangles
+    bool native = false;                   // a native scene's (R3DScene::blasts): no sprite to take the place of
     uint32_t track_id = 0;
 };
 
@@ -493,7 +494,8 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
     // Yavin (top state 3); SWT_EXPLOSIONS_ANYWHERE=1 everywhere the sprite is
     // drawn, replays included (testing)
     static const bool anywhere = getenv("SWT_EXPLOSIONS_ANYWHERE") != nullptr;
-    const bool on = g_enhanced && (anywhere || r3d_swt_stage() == 3);
+    // (a native scene has no sprite of the game's to fall back on: always)
+    const bool on = (g_enhanced && (anywhere || r3d_swt_stage() == 3)) || out.blast_viewport != 0;
     explosion_sound_enable(on);
     if (!on) {
         g_tracks.clear();
@@ -546,6 +548,20 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
             e.fog = out.vertices[e.trans[0]].fog;
             found.push_back(std::move(e));
         }
+    }
+
+    // A native scene's own (DOGFIGHT): no sprite, the fireball's quad is added
+    for (const R3DScene::Blast& b : out.blasts) {
+        Found e{};
+        e.native = true;
+        e.viewport = UINT32_MAX;
+        for (uint32_t vi = 0; vi < out.viewports.size(); vi++)
+            if (out.viewports[vi].node == out.blast_viewport && (out.viewports[vi].world || out.viewports[vi].shares_world)) e.viewport = vi;
+        e.c = load(b.at), e.prev = load(b.was);
+        e.radius = b.radius;
+        e.frame = std::clamp(b.frame, FIRST_FRAME, LAST_FRAME);
+        if (e.viewport == UINT32_MAX || e.c.z > -1e-3f || !(e.radius > 0)) continue;
+        found.push_back(std::move(e));
     }
 
     // The ships drawn this frame (fighters: small next to their distance),
@@ -697,6 +713,7 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
     // The sprite becomes the fireball: two of its triangles hold a quad
     // facing the eye, the rest of it (and its solid texels' copy in the
     // opaque list) collapse to nothing
+    std::vector<std::vector<R3DVertex>> native_quads(out.viewports.size());
     for (size_t i = 0; i < found.size(); i++) {
         Found& e = found[i];
         const Track* tr = nullptr;
@@ -734,6 +751,8 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
         for (int k = 0; k < 4; k++)
             q[k] = vertex(corner[k], corner[k] + move, d, uv[k][0], uv[k][1], FIREBALL, seed, t, e.radius, e.fog, tr ? tr->tint : 0xFFFFFFFFu);
         const int order[6] = {0, 1, 2, 0, 2, 3};
+        if (e.native)
+            for (int c = 0; c < 6; c++) native_quads[e.viewport].push_back(q[order[c]]);
         for (size_t j = 0; j < e.trans.size(); j++) {
             if (j < 2) {
                 for (int c = 0; c < 3; c++) out.vertices[e.trans[j] + c] = q[order[j * 3 + c]];
@@ -750,6 +769,7 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
     // The particles at the end of the translucent list of their viewport,
     // the ship's pieces at the end of its opaque list
     std::vector<std::vector<R3DVertex>> add_trans(out.viewports.size()), add_opaque(out.viewports.size());
+    for (size_t i = 0; i < native_quads.size(); i++) add_trans[i] = std::move(native_quads[i]);
     for (Track& t : g_tracks) {
         if (t.parts.empty() && t.chunks.empty()) continue;
         uint32_t vi = UINT32_MAX;

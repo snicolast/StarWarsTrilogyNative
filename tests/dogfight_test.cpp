@@ -1,7 +1,9 @@
 // DOGFIGHT's flight (src/dogfight/dogfight.cpp): which way each control turns
 // the ship, that its axes stay square, and the throttle
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "../src/dogfight/dogfight.h"
 
@@ -75,6 +77,49 @@ int main() {
         // not mirrored: x cross y = z
         float z[3] = {it.m[1] * it.m[6] - it.m[2] * it.m[5], it.m[2] * it.m[4] - it.m[0] * it.m[6], it.m[0] * it.m[5] - it.m[1] * it.m[4]};
         CHECK(std::fabs(dot(z, it.m + 8) - 1) < 1e-3f);
+    }
+    // The cannons: bolts while the button is held, none left a while after
+    {
+        dogfight_reset();
+        g_dogfight_controls.absolute = false;
+        g_dogfight_controls.fire = true;
+        fly(0, 0, 0, 0, 0.5f);
+        auto firing = dogfight_scene();
+        CHECK(firing->beams.size() >= 3 && firing->beams.size() <= 8);
+        g_dogfight_controls.fire = false;
+        fly(0, 0, 0, 0, 3);
+        CHECK(dogfight_scene()->beams.empty());
+        // Chasing the nearest TIE fighter and firing at it: it blows up
+        const int before = dogfight_ships();
+        bool blast_seen = false;
+        float target[3] = {};
+        {
+            auto sc = dogfight_scene();
+            float best = 1e30f;
+            for (const auto& it : sc->items) {
+                if (it.models[0] != 0xEDB841) continue;
+                float d[3] = {it.m[12] - sc->cam_pos[0], it.m[13] - sc->cam_pos[1], it.m[14] - sc->cam_pos[2]};
+                if (dot(d, d) < best) best = dot(d, d), memcpy(target, it.m + 12, sizeof(target));
+            }
+            CHECK(best < 1e30f);
+        }
+        for (int i = 0; i < 60 * 90 && dogfight_kills() == 0; i++) {
+            auto sc = dogfight_scene();
+            float d[3] = {target[0] - sc->cam_pos[0], target[1] - sc->cam_pos[1], target[2] - sc->cam_pos[2]};
+            float len = std::sqrt(dot(d, d));
+            float x = dot(d, sc->cam_axes) / len, y = dot(d, sc->cam_axes + 3) / len, z = dot(d, sc->cam_axes + 6) / len;
+            g_dogfight_controls.yaw = std::clamp(4 * x, -1.0f, 1.0f);
+            g_dogfight_controls.pitch = std::clamp(-4 * y, -1.0f, 1.0f);
+            g_dogfight_controls.throttle = len > 400 ? 1.0f : -1.0f;
+            g_dogfight_controls.fire = z > 0.999f && len < 1200;
+            dogfight_step(1.0f / 60);
+            blast_seen |= !dogfight_scene()->blasts.empty();
+        }
+        CHECK(dogfight_kills() == 1 && dogfight_ships() == before - 1 && blast_seen);
+        g_dogfight_controls.fire = false;
+        g_dogfight_controls.yaw = g_dogfight_controls.pitch = g_dogfight_controls.throttle = 0;
+        fly(0, 0, 0, 0, 2);
+        CHECK(dogfight_scene()->blasts.empty());
     }
     // The HUD: something drawn bottom left, nothing elsewhere, all of it opaque
     {

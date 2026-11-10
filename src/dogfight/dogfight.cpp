@@ -52,18 +52,37 @@ Frame facing(float yaw, float pitch, float roll) {   // radians, from the world'
 struct Shape {
     uint32_t models[4];
     int count;
+    float radius;   // the model's (out/model_catalog.txt)
+    int hits;       // cannon hits it takes (0: it only sparks)
 };
-const Shape XWING{{0xEE9EB4, 0xEEC840, 0xEE1A15}, 3};
-const Shape YWING{{0xEEF1E4}, 1};
-const Shape TIE{{0xEDB841}, 1};
-const Shape TIE_ADVANCED{{0xEBA43F}, 1};
-const Shape FALCON{{0xF0B18D}, 1};
-const Shape DESTROYER{{0xE17F78}, 1};
+const Shape XWING{{0xEE9EB4, 0xEEC840, 0xEE1A15}, 3, 7.2f, 0};
+const Shape YWING{{0xEEF1E4}, 1, 9.0f, 0};
+const Shape TIE{{0xEDB841}, 1, 5.2f, 2};
+const Shape TIE_ADVANCED{{0xEBA43F}, 1, 4.7f, 3};
+const Shape FALCON{{0xF0B18D}, 1, 16.1f, 0};
+const Shape DESTROYER{{0xE17F78}, 1, 823.0f, 0};
 
 struct Ship {
     const Shape* shape;
     Vec pos;
     Frame at;
+    uint32_t id = 0;   // its own for the whole flight (the renderer follows it from frame to frame)
+    int hits = 0;      // taken so far
+};
+
+// A cannon bolt: a short streak flying straight
+struct Bolt {
+    Vec pos, vel;
+    float life = 0;   // seconds left
+    uint32_t id = 0;
+};
+// An explosion: where, how big, and how far along it is (the renderer's
+// fireball takes the frames of the game's sprite: 2 to 46)
+struct Blast {
+    Vec pos;
+    float radius = 1;
+    float frame = 2;
+    uint32_t id = 0;
 };
 
 struct Sim {
@@ -71,6 +90,12 @@ struct Sim {
     Frame at;
     float speed = 60, throttle = 0.4f;
     std::vector<Ship> ships;
+    std::vector<Bolt> bolts;
+    std::vector<Blast> blasts;
+    uint32_t next_id = 1;
+    float reload = 0;   // seconds until the next bolt
+    int cannon = 0;     // the one to fire next, of four
+    int kills = 0;
     double time = 0;
     // The cockpit round the pilot: it leads the turns a little and is left
     // behind by a push of the engines, then settles (dogfight_cockpit_add's
@@ -78,11 +103,15 @@ struct Sim {
     float sway[6] = {};
 };
 Sim g_sim;
-std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};   // for the HUD, drawn on another thread
+std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};
+std::atomic<int> g_shown_ships{0}, g_shown_kills{0};   // for the HUD, drawn on another thread
 
 // Speeds in the game's units (an X-wing is about 11 long: metres, roughly) per second
 constexpr float SPEED_MIN = 20, SPEED_MAX = 160;
 constexpr float TURN_RATE = 1.1f, ROLL_RATE = 2.2f;   // radians per second at the stick's end
+// The cannons: one of the four every RELOAD seconds, in turn, their bolts
+// meeting CONVERGE ahead of the nose
+constexpr float BOLT_SPEED = 1400, BOLT_LIFE = 1.6f, BOLT_LENGTH = 16, RELOAD = 0.11f, CONVERGE = 450;
 
 uint32_t g_seed = 0x5EED1234;
 float rnd(float lo, float hi) {
@@ -94,7 +123,7 @@ void reset() {
     g_seed = 0x5EED1234;
     g_sim = Sim{};
     g_shown_speed = g_sim.speed, g_shown_throttle = g_sim.throttle;
-    auto add = [](const Shape& s, Vec pos, Frame at) { g_sim.ships.push_back({&s, pos, at}); };
+    auto add = [](const Shape& s, Vec pos, Frame at) { g_sim.ships.push_back({&s, pos, at, g_sim.next_id++, 0}); };
     // Two capital ships ahead, one side on and one coming
     add(DESTROYER, {600, 250, 4200}, facing(1.9f, 0, 0.1f));
     add(DESTROYER, {-2200, -400, 6500}, facing(2.9f, 0.05f, 0));
@@ -108,6 +137,69 @@ void reset() {
         Vec p{rnd(-500, 500), rnd(-220, 220), rnd(250, 2600)};
         add(i % 7 == 6 ? TIE_ADVANCED : TIE, p, facing(rnd(-3.1f, 3.1f), rnd(-0.5f, 0.5f), rnd(-0.6f, 0.6f)));
     }
+    g_shown_ships = int(g_sim.ships.size()), g_shown_kills = 0;
+}
+
+void blast(Sim& s, Vec pos, float radius) {
+    if (s.blasts.size() >= 16) s.blasts.erase(s.blasts.begin());
+    s.blasts.push_back({pos, radius, 2.0f, s.next_id++});
+}
+
+// Whether the point p lies in the ship. Fighters: a ball a little bigger
+// than the model (generous: they are small and far). The capital ship: a
+// wedge about its length (a guess from its radius: bow ahead, stern behind,
+// widest at the stern, flat)
+bool inside(const Ship& ship, Vec p) {
+    Vec d = p + ship.pos * -1;
+    float r = ship.shape->radius;
+    if (ship.shape != &DESTROYER) return dot(d, d) < r * r * 1.6f * 1.6f;
+    float x = dot(d, ship.at.right), y = dot(d, ship.at.down), z = dot(d, ship.at.fwd);
+    if (std::fabs(z) > r) return false;
+    float wide = 0.58f * r * (r - z) / (2 * r);
+    return std::fabs(x) < wide && y < 0.14f * r && y > -0.22f * r;   // (its bridge stands above the hull)
+}
+
+// The cannons fire while the button is held; the bolts fly, and what they
+// meet sparks, or blows up when it has taken enough
+void cannons(Sim& s, bool fire, float dt) {
+    s.reload = std::max(0.0f, s.reload - dt);
+    if (fire && s.reload <= 0) {
+        s.reload = RELOAD;
+        // The four wing tips: right and left, up and down, in turn
+        static const float tip[4][2] = {{5.4f, -1.9f}, {-5.4f, 1.9f}, {-5.4f, -1.9f}, {5.4f, 1.9f}};
+        Vec from = s.pos + s.at.right * tip[s.cannon][0] + s.at.down * tip[s.cannon][1] + s.at.fwd * 4.0f;
+        Vec dir = unit(s.pos + s.at.fwd * CONVERGE + from * -1);
+        s.cannon = (s.cannon + 1) & 3;
+        s.bolts.push_back({from, dir * BOLT_SPEED + s.at.fwd * s.speed, BOLT_LIFE, s.next_id++});
+    }
+    for (Bolt& b : s.bolts) {
+        Vec move = b.vel * dt;
+        b.life -= dt;
+        // Along its path in steps shorter than a fighter
+        float len = std::sqrt(dot(move, move));
+        int steps = std::max(1, int(len / 4.0f) + 1);
+        for (int i = 1; i <= steps && b.life > 0; i++) {
+            Vec p = b.pos + move * (float(i) / float(steps));
+            for (size_t k = 0; k < s.ships.size(); k++) {
+                Ship& ship = s.ships[k];
+                // (far ones are skipped by a ball about them first)
+                Vec d = p + ship.pos * -1;
+                float reach = ship.shape->radius * 1.7f;
+                if (dot(d, d) > reach * reach || !inside(ship, p)) continue;
+                b.life = 0;
+                if (ship.shape->hits && ++ship.hits >= ship.shape->hits) {
+                    blast(s, ship.pos, ship.shape->radius * 2.2f);
+                    s.ships.erase(s.ships.begin() + long(k));
+                    s.kills++;
+                } else {
+                    blast(s, p + unit(b.vel) * -1.5f, ship.shape == &DESTROYER ? 6.0f : 2.5f);
+                }
+                break;
+            }
+        }
+        b.pos = b.pos + move;
+    }
+    s.bolts.erase(std::remove_if(s.bolts.begin(), s.bolts.end(), [](const Bolt& b) { return b.life <= 0; }), s.bolts.end());
 }
 
 void step(float dt) {
@@ -146,6 +238,10 @@ void step(float dt) {
             s.sway[i] += speed_of[i] * dt;
         }
     }
+    cannons(s, c.fire, dt);
+    for (Blast& b : s.blasts) b.frame += 45.0f * dt;   // the fireball: a second
+    s.blasts.erase(std::remove_if(s.blasts.begin(), s.blasts.end(), [](const Blast& b) { return b.frame > 46.0f; }), s.blasts.end());
+    g_shown_ships = int(s.ships.size()), g_shown_kills = s.kills;
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
     float nearest = 0;
     for (const Ship& ship : s.ships) {
@@ -166,7 +262,8 @@ void dogfight_step(float dt) { step(dt); }
 float dogfight_speed() { return g_shown_speed; }
 float dogfight_throttle() { return g_shown_throttle; }
 float dogfight_speed_part() { return std::clamp((g_shown_speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0.0f, 1.0f); }
-int dogfight_ships() { return int(g_sim.ships.size()); }
+int dogfight_ships() { return g_shown_ships; }
+int dogfight_kills() { return g_shown_kills; }
 float dogfight_nearest() { return g_shown_nearest; }
 
 std::shared_ptr<const R3DNativeScene> dogfight_scene() {
@@ -200,7 +297,6 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
     }
     const Vec axes[3] = {s.at.right, s.at.down, s.at.fwd};
     for (int i = 0; i < 3; i++) scene->cam_axes[i * 3] = axes[i].x, scene->cam_axes[i * 3 + 1] = axes[i].y, scene->cam_axes[i * 3 + 2] = axes[i].z;
-    uint32_t key = 1;
     for (const Ship& ship : s.ships) {
         R3DNativeScene::Item it;
         it.count = ship.shape->count;
@@ -210,8 +306,23 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
         const Vec cols[4] = {ship.at.right * -1, ship.at.down * -1, ship.at.fwd, ship.pos};
         for (int c = 0; c < 4; c++) it.m[c * 4] = cols[c].x, it.m[c * 4 + 1] = cols[c].y, it.m[c * 4 + 2] = cols[c].z;
         it.m[15] = 1;
-        it.key = key++;
+        it.key = ship.id;
         scene->items.push_back(it);
+    }
+    for (const Bolt& b : s.bolts) {
+        R3DNativeScene::Beam beam;
+        Vec tail = b.pos + unit(b.vel) * -BOLT_LENGTH;
+        beam.a[0] = tail.x, beam.a[1] = tail.y, beam.a[2] = tail.z;
+        beam.b[0] = b.pos.x, beam.b[1] = b.pos.y, beam.b[2] = b.pos.z;
+        beam.key = b.id;
+        scene->beams.push_back(beam);
+    }
+    for (const Blast& b : s.blasts) {
+        R3DNativeScene::Blast o;
+        o.pos[0] = b.pos.x, o.pos[1] = b.pos.y, o.pos[2] = b.pos.z;
+        o.radius = b.radius;
+        o.frame = int(b.frame);
+        scene->blasts.push_back(o);
     }
     return scene;
 }

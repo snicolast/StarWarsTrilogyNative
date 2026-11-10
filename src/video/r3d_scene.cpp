@@ -97,6 +97,8 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     out.viewports.clear();
     out.glows.clear();
     out.casters.reset();
+    out.blasts.clear();
+    out.blast_viewport = 0;
     out.exposure_average = native_ ? native_->exposure_average : 0;
     out.frame = state.frame;
     out.polygons = 0;
@@ -584,6 +586,56 @@ void R3DSceneBuilder::native_items() {
         for (int i = 0; i < it.count; i++) model(it.models[i], m, Attribs{});
     }
     node_key_ = saved;
+
+    // Its streaks of light: each a strip facing the eye, a wide one in its
+    // colour and a narrow white-hot one inside it, in the translucent list
+    // (they cast no shadows). Never thinner than about a pixel and a half
+    auto to_view = [](const float* t, const float* q, float* o) {
+        for (int r = 0; r < 3; r++) o[r] = t[r] * q[0] + t[4 + r] * q[1] + t[8 + r] * q[2] + t[12 + r];
+    };
+    for (const R3DNativeScene::Beam& beam : native_->beams) {
+        float a[3], b[3];
+        to_view(view.m, beam.a, a);
+        to_view(view.m, beam.b, b);
+        if (a[2] > -0.5f && b[2] > -0.5f) continue;   // behind the eye
+        float d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]}, mid[3] = {(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2};
+        float side[3] = {d[1] * mid[2] - d[2] * mid[1], d[2] * mid[0] - d[0] * mid[2], d[0] * mid[1] - d[1] * mid[0]};
+        float len = std::sqrt(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
+        if (len < 1e-6f) side[0] = 1, side[1] = side[2] = 0, len = 1;
+        float dist = std::sqrt(mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]);
+        for (int layer = 0; layer < 2; layer++) {
+            float half = std::max(beam.width, 0.0016f * dist) * (layer ? 0.2f : 0.5f) / len;
+            R3DVertex q[4] = {};
+            const float* end[4] = {a, b, b, a};
+            const float sign[4] = {-1, -1, 1, 1};
+            for (int k = 0; k < 4; k++) {
+                for (int c = 0; c < 3; c++) q[k].pos[c] = q[k].prev[c] = end[k][c] + side[c] * half * sign[k];
+                q[k].nrm[2] = 1;
+                q[k].color = layer ? 0xFFFFFFFFu : (beam.color & 0x00FFFFFFu) | 0xB0000000u;
+                q[k].flags = R3D_LUMINOUS;
+            }
+            static const int order[6] = {0, 1, 2, 0, 2, 3};
+            for (int k = 0; k < 6; k++) {
+                trans_.push_back(q[order[k]]);
+                // (a key of its own: the next frame finds where each corner was)
+                trans_keys_.push_back(0xBEA3000000000000ull | uint64_t(beam.key) << 8 | uint64_t(layer * 6 + k));
+            }
+        }
+    }
+    // Its explosions, for r3d_swt_explosions: where each is in this view and
+    // where it was in the last one
+    const bool follows = out_->frame == native_view_frame_ + 1;
+    for (const R3DNativeScene::Blast& blast : native_->blasts) {
+        R3DScene::Blast o{};
+        to_view(view.m, blast.pos, o.at);
+        to_view(follows ? native_view_was_ : view.m, blast.pos, o.was);
+        o.radius = blast.radius;
+        o.frame = blast.frame;
+        out_->blasts.push_back(o);
+    }
+    out_->blast_viewport = viewport_key_;
+    memcpy(native_view_was_, view.m, sizeof(native_view_was_));
+    native_view_frame_ = out_->frame;
 }
 
 // A native scene's things fixed to the camera (R3DNativeScene::fixed and
