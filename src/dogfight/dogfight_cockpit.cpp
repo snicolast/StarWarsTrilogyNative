@@ -408,7 +408,7 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
     auto globe = [&](V3 d) { return X * d.x + U * d.y + F * d.z; };   // (right, up, ahead) of the ship
     // A hologram's colours (R in the low byte): the projector's pale blue,
     // the level plane in white, the enemy red, friends green
-    const uint32_t BLUE = 0xFFB060u, WHITE = 0xFFF0E0u, RED = 0x3030FFu, GREEN = 0x60FF50u, PALE = 0xFFE0C0u, YELLOW = 0x30E0F0u;
+    const uint32_t BLUE = 0xFFB060u, WHITE = 0xFFF0E0u, RED = 0x3030FFu, GREEN = 0x60FF50u, PALE = 0xFFE0C0u, YELLOW = 0x30E0F0u, ORANGE = 0x1080FFu;
     // Now and then the whole picture slips sideways for an instant, as a
     // poor signal does (the scan lines and the flicker are r3d.frag's)
     scene.holo_time = float(std::fmod(time, 1000.0));
@@ -466,7 +466,7 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
         if (dist < 1e-3f) continue;
         float r = R * std::min(1.0f, std::sqrt(dist / 3000.0f)) / dist;
         V3 level = C + X * (d.x * r) + F * (d.z * r), p = level + U * (d.y * r);
-        uint32_t rgb = c.locked ? YELLOW : c.kind == DogfightContact::FOE ? RED : c.kind == DogfightContact::FRIEND ? GREEN : PALE;
+        uint32_t rgb = c.locked ? YELLOW : c.threat ? ORANGE : c.kind == DogfightContact::FOE ? RED : c.kind == DogfightContact::FRIEND ? GREEN : PALE;
         h.line(level, p, thin, rgb, 0.55f);
         h.dot(level, R * 0.018f, rgb, 0.5f);
         if (c.kind != DogfightContact::CAPITAL) {

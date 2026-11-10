@@ -71,7 +71,7 @@ struct Ship {
     float speed = 0;   // units a second (the enemy fighters fly; the rest stand still for now)
     // An enemy fighter's pilot
     struct Pilot {
-        enum Mode { CHASE, BREAK, EVADE } mode = CHASE;
+        enum Mode { CHASE, BREAK, EVADE, OVERSHOOT } mode = CHASE;   // (OVERSHOOT: shaken off, it flies straight on)
         float timer = 0;      // seconds left of a break or an evasion
         Vec way{0, 0, 1};     // where it flies meanwhile
         float jink = 0;       // evading: seconds until it changes its way
@@ -81,6 +81,8 @@ struct Ship {
         int burst = 0;        // shots left of this one
         float skill = 0.5f;   // 0 a novice, 1 an ace: how soon it reacts, how tight it turns and shoots
         bool engaged = false; // one of the few that attack at a time
+        bool passer = false;  // of those, the one that makes passes (the other goes for the tail)
+        float fooled = 0;     // seconds until a hard turn of the player's can shake it off again
     } ai;
 };
 
@@ -91,6 +93,7 @@ struct Bolt {
     float flown = 0;  // how far it has come from the cannon (its tail is no longer than that)
     uint32_t id = 0;
     bool foe = false;   // an enemy's: green, and it is the player it can hit
+    uint32_t owner = 0; // ... and whose
 };
 // An explosion: where, how big, and how far along it is (the renderer's
 // fireball takes the frames of the game's sprite: 2 to 46)
@@ -116,6 +119,12 @@ struct Sim {
     float shield = 1;      // the player's, 0..1; it comes back slowly when nothing has hit for a while
     float unhurt = 99;     // seconds since the last hit
     bool warning = false;  // an enemy has the player in its sights
+    uint32_t threat = 0;   // the enemy to worry about: aiming, firing, or the last to hit (0: none)
+    float threat_hold = 0; // seconds it stays the one
+    uint32_t hitter = 0;   // whose bolt hit last, and when
+    double hit_time = -99;
+    float hard = 0;        // seconds the player has been turning hard
+    bool threat_was = false;
     float downed = 0;      // seconds left of the notice after being shot down (the flight starts again)
     uint32_t target = 0;   // the id of the ship the target lock holds (0: none)
     bool lock_was = false;
@@ -209,7 +218,7 @@ void cannons(Sim& s, bool fire, float dt) {
         Vec from = s.pos + s.at.right * tip[s.cannon][0] + s.at.down * tip[s.cannon][1] + s.at.fwd * 4.0f;
         Vec dir = unit(s.pos + s.at.fwd * CONVERGE + from * -1);
         s.cannon = (s.cannon + 1) & 3;
-        s.bolts.push_back({from, dir * BOLT_SPEED + s.at.fwd * s.speed, BOLT_LIFE, 0, s.next_id++, false});
+        s.bolts.push_back({from, dir * BOLT_SPEED + s.at.fwd * s.speed, BOLT_LIFE, 0, s.next_id++, false, 0});
     }
     for (Bolt& b : s.bolts) {
         Vec move = b.vel * dt;
@@ -225,6 +234,7 @@ void cannons(Sim& s, bool fire, float dt) {
                 b.life = 0;
                 s.shield -= HIT;
                 s.unhurt = 0;
+                s.hitter = b.owner, s.hit_time = s.time;
                 s.sounds |= DOGFIGHT_SOUND_HURT;
                 // (the cockpit is thrown about)
                 s.sway[0] += rnd(-0.02f, 0.02f), s.sway[2] += rnd(-0.05f, 0.05f), s.sway[5] -= 0.012f;
@@ -284,7 +294,14 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         foes.push_back({std::sqrt(dot(d, d)) * (ship.ai.engaged ? 0.7f : 1.0f), &ship});
     }
     std::sort(foes.begin(), foes.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-    for (size_t i = 0; i < foes.size(); i++) foes[i].second->ai.engaged = i < size_t(ATTACKERS);
+    for (size_t i = 0; i < foes.size(); i++) {
+        foes[i].second->ai.engaged = i < size_t(ATTACKERS);
+        foes[i].second->ai.passer = i == 1;
+    }
+    // A hard turn held a moment shakes off the one on the tail, if its pilot is taken in
+    const bool hard_was = s.hard >= 0.6f;
+    s.hard = manoeuvre >= 0.85f ? s.hard + dt : 0;
+    const bool shake = s.hard >= 0.6f && !hard_was;
     const Vec player_vel = s.at.fwd * s.speed;
     s.warning = false;
     for (Ship& ship : s.ships) {
@@ -299,22 +316,29 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         float want_speed = TIE_MAX;
         bool fire = false;
 
-        ai.timer -= dt;
+        ai.timer -= dt, ai.fooled -= dt;
         if (ai.mode != Ship::Pilot::CHASE && ai.timer <= 0) ai.mode = Ship::Pilot::CHASE;
+        if (shake && ai.mode == Ship::Pilot::CHASE && ai.engaged && ai.fooled <= 0 && dist < 450 && dot(dir, s.at.fwd) > 0.5f) {
+            ai.fooled = 6;
+            if (rnd(0, 1) < 0.9f - 0.55f * ai.skill) {   // it flies on past the turn, and has to come round again
+                ai.mode = Ship::Pilot::OVERSHOOT, ai.timer = rnd(2.5f, 3.5f), ai.way = ship.at.fwd;
+                ai.aimed = 0, ai.burst = 0;
+            }
+        }
         if (ai.mode == Ship::Pilot::CHASE) {
             // The player behind it, pointing at it, near: it will not sit still for that
             bool hunted = dot(s.at.fwd, dir * -1) > 0.985f && dist < 700 && dot(ship.at.fwd, dir) < 0.3f;
             ai.dread = hunted ? ai.dread + dt : 0;
             if (ai.dread > 0.9f - 0.5f * ai.skill) {
                 ai.mode = Ship::Pilot::EVADE, ai.timer = rnd(1.5f, 3.0f), ai.jink = 0, ai.dread = 0;
-            } else if (dist < 80) {
-                // Too near: away to a side, and round again
-                ai.mode = Ship::Pilot::BREAK, ai.timer = rnd(2.0f, 3.5f);
+            } else if (dist < (ai.passer ? 150 : 80)) {
+                // Too near (or its pass made): away to a side, and round again
+                ai.mode = Ship::Pilot::BREAK, ai.timer = ai.passer ? rnd(4.0f, 6.0f) : rnd(2.0f, 3.5f);
                 Vec side = cross(dir, ship.at.down) * (rnd(-1, 1) < 0 ? -1.0f : 1.0f) + ship.at.down * rnd(-0.6f, 0.6f);
                 ai.way = unit(ship.at.fwd * 0.6f + side);
             }
         }
-        if (ai.mode == Ship::Pilot::BREAK) {
+        if (ai.mode == Ship::Pilot::BREAK || ai.mode == Ship::Pilot::OVERSHOOT) {
             want = ai.way;
         } else if (ai.mode == Ship::Pilot::EVADE) {
             ai.jink -= dt;
@@ -328,7 +352,7 @@ void pilots(Sim& s, float manoeuvre, float dt) {
             // How far round the player's tail it is: 1 right behind it
             float behind = std::clamp(dot(dir, s.at.fwd), 0.0f, 1.0f);
             Vec tail = s.pos + s.at.fwd * -150.0f;
-            float w = std::clamp((behind - 0.3f) / 0.4f, 0.0f, 1.0f);
+            float w = ai.passer ? 1.0f : std::clamp((behind - 0.3f) / 0.4f, 0.0f, 1.0f);   // (the one that makes passes comes straight in)
             want = unit(tail + (lead + tail * -1) * w + ship.pos * -1);
             // Fast to get there; behind the player, the player's speed and a little more while far
             if (dist < 500) want_speed = behind > 0.6f ? s.speed + (dist - 200) * 0.3f : TIE_MAX * 0.8f;
@@ -373,12 +397,39 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         if (fire && ai.burst == 0 && ai.pause <= 0) ai.burst = 3 + int(rnd(0, 2.99f));
         if (ai.burst > 0 && ai.reload <= 0) {
             ai.reload = TIE_RELOAD;
-            if (--ai.burst == 0) ai.pause = rnd(2.0f, 4.0f) - ai.skill;
+            if (--ai.burst == 0) {
+                ai.pause = rnd(2.0f, 4.0f) - ai.skill;
+                // Its burst fired, it swings away and has to line up again
+                if (ai.mode == Ship::Pilot::CHASE) {
+                    ai.mode = Ship::Pilot::BREAK, ai.timer = rnd(2.5f, 4.0f) - ai.skill;
+                    Vec side = cross(dir, ship.at.down) * (rnd(-1, 1) < 0 ? -1.0f : 1.0f) + ship.at.down * rnd(-0.6f, 0.6f);
+                    ai.way = unit(ship.at.fwd * 0.5f + side);
+                }
+            }
             float spread = (0.040f + 0.060f * manoeuvre) * (1.5f - ai.skill);
             Vec from = ship.pos + nose * 6.0f;
             Vec aim = unit(unit(lead + from * -1) + Vec{rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)} * spread);
-            s.bolts.push_back({from, aim * TIE_BOLT, 2.0f, 0, s.next_id++, true});
+            s.bolts.push_back({from, aim * TIE_BOLT, 2.0f, 0, s.next_id++, true, ship.id});
             s.sounds |= DOGFIGHT_SOUND_TIE;
+        }
+    }
+    // The one to worry about: the nearest of those aiming or firing, or the
+    // last to hit; it stays the one a moment, so the arrow does not flicker
+    s.threat_hold -= dt;
+    {
+        const Ship* worst = nullptr;
+        float worst_dist = 1e30f;
+        bool still = false;
+        for (const Ship& ship : s.ships) {
+            if (!foe(ship)) continue;
+            still |= ship.id == s.threat;
+            bool danger = ship.ai.burst > 0 || ship.ai.aimed > 0.2f || (ship.id == s.hitter && s.time - s.hit_time < 4);
+            Vec d = ship.pos + s.pos * -1;
+            if (danger && dot(d, d) < worst_dist) worst_dist = dot(d, d), worst = &ship;
+        }
+        if (!still || s.threat_hold <= 0) {
+            s.threat = worst ? worst->id : 0;
+            s.threat_hold = worst ? 1.5f : 0;
         }
     }
     // More of them when few are left: from far off, any side
@@ -434,6 +485,8 @@ void step(float dt) {
     }
     if (c.lock && !s.lock_was) lock(s);
     s.lock_was = c.lock;
+    if (c.lock_threat && !s.threat_was && s.threat) s.target = s.threat;   // the lock on the one attacking
+    s.threat_was = c.lock_threat;
     if (g_ai) pilots(s, std::clamp(std::fabs(c.pitch.load()) + std::fabs(c.yaw.load()), 0.0f, 1.0f), dt);
     cannons(s, c.fire, dt);
     // The shield comes back when nothing has hit for a while; with none left
@@ -490,16 +543,8 @@ float dogfight_nearest() { return g_shown_nearest; }
 // a hand's width from the eye (view space: x right, y up, -z ahead), over
 // the cockpit, as a sight on the pilot's visor would be
 static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
-    const Ship* ship = nullptr;
-    for (const Ship& o : s.ships)
-        if (o.id == s.target) ship = &o;
-    if (!s.target || !ship) return;
-    Vec d = ship->pos + cam * -1;
-    float dist = std::sqrt(dot(d, d));
-    if (dist < 1e-3f) return;
-    const float right = dot(d, s.at.right) / dist, up = -dot(d, s.at.down) / dist, ahead = dot(d, s.at.fwd) / dist;
     const float D = 0.2f;
-    const uint32_t YELLOW = 0xFF30E0F0u, RED = 0xFF2840FFu;
+    const uint32_t YELLOW = 0xFF30E0F0u, RED = 0xFF2840FFu, ORANGE = 0xFF1080FFu;
     // A line between two points of view space, `wide` across, flat to the eye
     auto line = [&](Vec a, Vec b, float wide, uint32_t color) {
         Vec side = unit(cross(b + a * -1, a + b)) * (wide * 0.5f);
@@ -511,6 +556,45 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
             scene.marks.push_back(v);
         }
     };
+    // An arrow at `ring` (radians from the middle) towards where (right, up) says
+    auto arrow = [&](float right, float up, float ring, bool shown, uint32_t color, Vec* middle, float* length) {
+        float len = std::sqrt(right * right + up * up);
+        float ex = len > 1e-4f ? right / len : 0, ey = len > 1e-4f ? up / len : 1;
+        const float size = shown ? D * 0.022f : 0, wide = shown ? D * 0.004f : 0;
+        Vec p{D * std::sin(ring) * ex, D * std::sin(ring) * ey, -D * std::cos(ring)};
+        Vec e{ex, ey, 0}, side{-ey, ex, 0};
+        Vec tip = p + e * size;
+        line(tip, p + e * (-size * 0.4f) + side * (size * 0.8f), wide, color);
+        line(tip, p + e * (-size * 0.4f) + side * (-size * 0.8f), wide, color);
+        if (middle) *middle = p + e * (-size * 2.4f);
+        if (length) *length = size;
+    };
+    // The one attacking, when it is out of view: an orange arrow, farther
+    // out than the locked one's (always drawn, with no size when not shown)
+    {
+        const Ship* threat = nullptr;
+        for (const Ship& o : s.ships)
+            if (s.threat && o.id == s.threat) threat = &o;
+        float right = 0, up = 1;
+        bool shown = false;
+        if (threat) {
+            Vec d = threat->pos + cam * -1;
+            float ahead = dot(d, s.at.fwd);
+            right = dot(d, s.at.right), up = -dot(d, s.at.down);
+            shown = ahead <= 0 || std::fabs(right / ahead) > 0.58f || std::fabs(up / ahead) > 0.40f;
+            // (blinking while it is the locked one too: the yellow arrow says the rest)
+            if (shown && threat->id == s.target) shown = std::fmod(s.time, 0.4) < 0.25;
+        }
+        arrow(right, up, 0.27f, shown, ORANGE, nullptr, nullptr);
+    }
+    const Ship* ship = nullptr;
+    for (const Ship& o : s.ships)
+        if (o.id == s.target) ship = &o;
+    if (!s.target || !ship) return;
+    Vec d = ship->pos + cam * -1;
+    float dist = std::sqrt(dot(d, d));
+    if (dist < 1e-3f) return;
+    const float right = dot(d, s.at.right) / dist, up = -dot(d, s.at.down) / dist, ahead = dot(d, s.at.fwd) / dist;
     // Always the same number of triangles (the display goes from one frame's
     // to the next's): what is not shown is drawn with no size
     const bool front = ahead > 0.05f;
@@ -535,19 +619,13 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
     }
     {
         const bool out = !front || std::fabs(right / ahead) > 0.58f || std::fabs(up / ahead) > 0.40f;
-        float len = std::sqrt(right * right + up * up);
-        float ex = len > 1e-4f ? right / len : 0, ey = len > 1e-4f ? up / len : 1;
-        const float ring = 0.20f, size = out ? D * 0.022f : 0, wide = out ? D * 0.004f : 0;
-        Vec p{D * std::sin(ring) * ex, D * std::sin(ring) * ey, -D * std::cos(ring)};
-        Vec e{ex, ey, 0}, side{-ey, ex, 0};
-        Vec tip = p + e * size;
-        line(tip, p + e * (-size * 0.4f) + side * (size * 0.8f), wide, YELLOW);
-        line(tip, p + e * (-size * 0.4f) + side * (-size * 0.8f), wide, YELLOW);
+        Vec inside;
+        arrow(right, up, 0.20f, out, YELLOW, &inside, nullptr);
         // Its distance in small figures: inside the arrow, or under the
         // bracket when there is no arrow. Seven strokes a figure, four
         // figures, so their number never changes either
         const float high = D * 0.011f, across = high * 0.55f, gap = high * 0.35f;
-        Vec at = out ? p + e * (-size * 2.4f) : front ? Vec{right, up, -ahead} * D + Vec{0, -(bracket + high * 1.6f), 0} : Vec{0, 0, -D};
+        Vec at = out ? inside : front ? Vec{right, up, -ahead} * D + Vec{0, -(bracket + high * 1.6f), 0} : Vec{0, 0, -D};
         char digits[8];
         int n = snprintf(digits, sizeof(digits), "%d", std::clamp(int(dist + 0.5f), 0, 9999));
         static const uint8_t strokes[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bit 0 the top, then clockwise, bit 6 the middle
@@ -594,6 +672,7 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
             c.kind = ship.shape == &DESTROYER ? DogfightContact::CAPITAL : foe(ship) ? DogfightContact::FOE : DogfightContact::FRIEND;
             c.locked = ship.id == s.target;
             c.attacking = foe(ship) && ship.ai.aimed > 0;
+            c.threat = ship.id == s.threat;
             contacts.push_back(c);
         }
         // The battle's up (the world's y points down)

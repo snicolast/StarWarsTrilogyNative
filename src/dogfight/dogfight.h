@@ -30,6 +30,7 @@ struct DogfightControls {
     std::atomic<bool> fire{false};       // the cannons, while held
     // Trying the game's sounds out (for now): keys 1 to 6 ask for one each; 0: none
     std::atomic<int> audition{0};
+    std::atomic<bool> lock_threat{false};   // ... and this one takes the enemy that is attacking (the orange arrow's)
     std::atomic<bool> lock{false};       // the target lock: each press takes the enemy nearest the nose (the next nearest if it has that one)
 };
 extern DogfightControls g_dogfight_controls;
@@ -90,6 +91,7 @@ struct DogfightContact {
     enum Kind { FRIEND, FOE, CAPITAL } kind = FOE;
     bool locked = false;         // the one the target lock holds
     bool attacking = false;      // it has the player in its sights
+    bool threat = false;         // the one to worry about (the orange arrow's)
 };
 // The radar: a holographic globe projected over the dashboard, left of the
 // screen, as the films' holograms are (pale blue, scan lines, a flicker, a

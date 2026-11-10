@@ -59,6 +59,7 @@ struct PadState {
     // engines (shoulder buttons: slower, faster) 0 or 1, and a flight stick's throttle lever 0..1 (has_throttle)
     float fly[4] = {}, fly_triggers[2] = {}, fly_throttle = 0;
     bool fly_fire = false;   // DOGFIGHT's cannons: right trigger or A (the shoulder buttons are its throttle); a flight stick's trigger
+    bool fly_threat = false;   // ... and its lock on the one attacking: X; a flight stick's third button
     bool fly_lock = false;   // DOGFIGHT's target lock: Y; a flight stick's second button
     bool has_throttle = false;
 };
