@@ -694,11 +694,24 @@ void r3d_swt_explosions(R3DScene& out, const std::vector<std::vector<R3DInstance
             }
         if (!best) continue;
         Rng rng{t.seed ^ 0xC0FFEEu};
-        uint32_t key = best->key;
-        break_ship(t, *best, rng);
+        // (a ship drawn as several models at one place, as DOGFIGHT's X-wing
+        // is: all of them are the ship)
+        Ship whole = *best;
+        std::vector<uint32_t> gone{best->key};
+        for (const auto& frame : g_ships) {
+            if (best < frame.data() || best >= frame.data() + frame.size()) continue;
+            for (const Ship& sh : frame) {
+                if (&sh == best || std::binary_search(keys_now.begin(), keys_now.end(), sh.key)) continue;
+                if (length(sh.origin - best->origin) > 0.05f * std::max(best->radius, 1.0f)) continue;
+                whole.verts.insert(whole.verts.end(), sh.verts.begin(), sh.verts.end());
+                whole.radius = std::max(whole.radius, sh.radius);
+                gone.push_back(sh.key);
+            }
+        }
+        break_ship(t, whole, rng);
         t.broken = true;
         for (auto& frame : g_ships)   // one ship, one explosion
-            frame.erase(std::remove_if(frame.begin(), frame.end(), [&](const Ship& sh) { return sh.key == key; }), frame.end());
+            frame.erase(std::remove_if(frame.begin(), frame.end(), [&](const Ship& sh) { return std::find(gone.begin(), gone.end(), sh.key) != gone.end(); }), frame.end());
     }
     g_ships.insert(g_ships.begin(), std::move(ships));
     if (g_ships.size() > 3) g_ships.resize(3);
