@@ -75,7 +75,7 @@ int main() {
         // (and the player's own; the engines' glows are items too: four an X-wing, three a capital ship)
         int glows = 0;
         for (const auto& it : scene->items) glows += it.models[0] == 0xEE5CCE || it.models[0] == 0xF05EA2;
-        CHECK(int(scene->items.size()) - glows == dogfight_ships() + 1 && dogfight_ships() > 10 && glows == 5 * 4 + 2 * 3);
+        CHECK(int(scene->items.size()) - glows == dogfight_ships() + 1 && dogfight_ships() > 8 && glows == (dogfight_side(false) - 1) * 4 + 2 * 3);
     }
     for (const auto& it : scene->items) {
         CHECK(it.count >= 1 && it.count <= 4 && it.models[0] != 0 && it.m[15] == 1);
@@ -193,7 +193,8 @@ int main() {
         for (int i = 0; i < 60 * 300 && dogfight_result() != DOGFIGHT_DEFEAT; i++) dogfight_step(1.0f / 60);
         CHECK(dogfight_result() == DOGFIGHT_DEFEAT && dogfight_shield() == 0);
         for (int i = 0; i < 60 * 8; i++) dogfight_step(1.0f / 60);
-        CHECK(dogfight_result() == 0 && dogfight_left(false) == 6 && dogfight_left(true) == 6 && dogfight_shield() == 1);
+        CHECK(dogfight_result() == 0 && dogfight_left(false) == dogfight_side(false) && dogfight_left(true) == dogfight_side(true) && dogfight_shield() == 1);
+        CHECK(dogfight_side(false) >= 3 && dogfight_side(false) <= 6 && dogfight_side(true) > dogfight_side(false) && dogfight_side(true) <= 9);
         dogfight_set_ai(false);
         dogfight_reset();
     }

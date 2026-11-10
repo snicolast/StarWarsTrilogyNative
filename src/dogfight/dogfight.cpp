@@ -158,6 +158,7 @@ struct Sim {
     // DOGFIGHT_DEFEAT) and the seconds left until the next begins, how long
     // it took, and how much of the shields' return is left (it wanes as ships fall)
     int total = 0, over = 0;
+    int side[2] = {0, 0};   // fighters at the start: friends (the player among them), foes
     int bursts = 0;   // the explosions of the player's own ship so far
     // The fighters left on each side (friends, the player among them; foes) and when one of each last fell
     int left[2] = {-1, -1};
@@ -176,7 +177,7 @@ std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};
 std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
 std::atomic<int> g_shown_message{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false};
-std::atomic<int> g_shown_result{0}, g_shown_friends{0}, g_shown_foes{0};
+std::atomic<int> g_shown_result{0}, g_shown_friends{0}, g_shown_foes{0}, g_shown_side[2];
 std::atomic<float> g_shown_target_shield{-1}, g_shown_took{0}, g_shown_flash{0}, g_shown_dark{0};
 std::atomic<float> g_shown_shield{1}, g_shown_push{0}, g_shown_charge{1};
 uint32_t g_first_seed = 0x5EED1234;
@@ -195,10 +196,10 @@ constexpr float BOLT_SPEED = 1400, BOLT_LIFE = 1.6f, BOLT_LENGTH = 42, RELOAD = 
 constexpr float TIE_MIN = 50, TIE_MAX = 150, TIE_TURN = 1.25f, TIE_BOLT = 900, TIE_RELOAD = 0.16f;
 constexpr int ATTACKERS = 2;
 constexpr float FIGHTER_BALL = 9.5f;
-// Last man standing: SIDE fighters each (the player one of the X-wings), all
+// Last man standing: a few X-wings (the player one of them) against more TIE
+// fighters, how many of each drawn anew for every match (reset()), all
 // with the same shield: a hit's worth of it (four bring a ship down), a
 // second's worth coming back after that long unhurt, while most still fly
-constexpr int SIDE = 6;
 constexpr float DEFEAT_TIME = 7;   // seconds from the player's fall to the next match
 // ... and less from WANE_FROM seconds into the match, none WANE_FOR later: no match goes on for ever
 constexpr float WANE_FROM = 90, WANE_FOR = 90;
@@ -220,18 +221,23 @@ void reset() {
     // The squadron beside the player, and as many TIE fighters coming at
     // them from far ahead: the two sides meet head on
     static const float place[5][3] = {{-45, 6, 20}, {45, -4, 30}, {-90, 14, -25}, {90, -10, -15}, {0, 22, -60}};
-    for (int i = 0; i < SIDE - 1; i++) {
+    // (three to six X-wings, and one to three more TIE fighters than that:
+    // the enemy is always the more)
+    const int friends = 3 + int(rnd(0, 3.99f)), foes = friends + 1 + int(rnd(0, 2.99f));
+    g_sim.side[0] = friends, g_sim.side[1] = foes;
+    for (int i = 0; i < friends - 1; i++) {
         add(XWING, {place[i % 5][0] * float(1 + i / 5), place[i % 5][1], place[i % 5][2] - 60.0f * float(i / 5)}, Frame{});
         g_sim.ships.back().ai.skill = rnd(0.35f, 0.8f);
     }
-    for (int i = 0; i < SIDE; i++) {
-        add(TIE, {rnd(-260, 260), rnd(-120, 120), 2600 + rnd(-200, 200)}, facing(3.14159265f, 0, rnd(-0.4f, 0.4f)));
+    for (int i = 0; i < foes; i++) {
+        add(TIE, {rnd(-320, 320), rnd(-140, 140), 2600 + rnd(-250, 250)}, facing(3.14159265f, 0, rnd(-0.4f, 0.4f)));
         g_sim.ships.back().ai.skill = rnd(0.35f, 0.8f);
     }
     for (Ship& ship : g_sim.ships)
         if (ship.shape->hits) ship.speed = g_ai ? 100.0f : 0.0f;
-    g_sim.total = 2 * SIDE;
+    g_sim.total = friends + foes;
     g_shown_ships = int(g_sim.ships.size()), g_shown_kills = 0;
+    g_shown_side[0] = friends, g_shown_side[1] = foes, g_shown_friends = friends, g_shown_foes = foes;
 }
 
 
@@ -785,7 +791,7 @@ int dogfight_result() { return g_shown_result; }
 int dogfight_left(bool foes) { return foes ? g_shown_foes : g_shown_friends; }
 float dogfight_target_shield() { return g_shown_target_shield; }
 float dogfight_took() { return g_shown_took; }
-int dogfight_side() { return SIDE; }
+int dogfight_side(bool foes) { return g_shown_side[foes ? 1 : 0]; }
 float dogfight_flash() { return g_shown_flash; }
 float dogfight_dark() { return g_shown_dark; }
 void dogfight_set_ai(bool on) { g_ai = on; }

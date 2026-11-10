@@ -445,8 +445,50 @@ static void dogfight_controls(bool focused) {
     c.throttle = absolute ? throttle : std::clamp(throttle, -1.0f, 1.0f);
 }
 
+// DOGFIGHT: when the window stops being the one in front while flying, which
+// window took its place is written to out/focus_log.txt (its title, class and
+// program), with the time. Twice the controls went dead in a flight with
+// nothing clicked; this says what took the focus
+static void dogfight_focus_log(HWND hwnd, bool focused) {
+    static bool was = true;
+    static HWND last = nullptr;
+    if (focused) {
+        if (!was)
+            if (FILE* f = fopen("out/focus_log.txt", "a")) {
+                fprintf(f, "  back in front\n");
+                fclose(f);
+            }
+        was = true, last = nullptr;
+        return;
+    }
+    HWND front = GetForegroundWindow();
+    if (was == false && front == last) return;   // (said already)
+    if (!front && was) return;                   // (between two windows: the next poll says which)
+    was = false, last = front;
+    (void)hwnd;
+    char title[200] = "", cls[100] = "", exe[MAX_PATH] = "";
+    if (front) {
+        GetWindowTextA(front, title, sizeof(title));
+        GetClassNameA(front, cls, sizeof(cls));
+        DWORD pid = 0;
+        GetWindowThreadProcessId(front, &pid);
+        if (HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
+            DWORD n = sizeof(exe);
+            if (!QueryFullProcessImageNameA(h, 0, exe, &n)) exe[0] = 0;
+            CloseHandle(h);
+        }
+    }
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    if (FILE* f = fopen("out/focus_log.txt", "a")) {
+        fprintf(f, "%02d:%02d:%02d focus lost to: title \"%s\" class \"%s\" program \"%s\"\n", t.wHour, t.wMinute, t.wSecond, title, cls, exe);
+        fclose(f);
+    }
+}
+
 bool poll_gamepads(HWND hwnd) {
     bool focused = GetForegroundWindow() == hwnd;
+    if (g_dogfight == 2) dogfight_focus_log(hwnd, focused);
     g_pads.set_targets(aim_targets());
     g_pads.poll(g_pad_settings, focused, g_menu_open);
     if (g_dogfight == 2) dogfight_controls(focused);

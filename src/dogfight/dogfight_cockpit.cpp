@@ -467,9 +467,8 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
         static int was[2] = {0, 0};
         static double fell[2] = {-99, -99};
         static const uint8_t strokes[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bit 0 the top, then clockwise, bit 6 the middle
-        const int side = dogfight_side();
         for (int k = 0; k < 2; k++) {
-            const int left = std::clamp(dogfight_left(k == 1), 0, 9);
+            const int left = std::clamp(dogfight_left(k == 1), 0, 9), side = dogfight_side(k == 1);
             if (left < was[k]) fell[k] = time;
             if (time < fell[k]) fell[k] = -99;   // (a new flight)
             was[k] = left;
@@ -485,7 +484,7 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
             if (lit)
                 for (int j = 0; j < 7; j++)
                     if (strokes[left] >> j & 1) h.line(at + seg[j][0], at + seg[j][1], stroke, rgb, 0.95f);
-            const float gap = R * 0.105f;
+            const float gap = R * (side > 7 ? 0.085f : 0.105f);
             for (int i = 0; i < side; i++) {
                 V3 pip = C + eu * (R * 1.2f) + X * (R * (k ? 0.5f : -0.5f) + gap * (float(i) - float(side - 1) * 0.5f));
                 h.dot(pip, R * 0.03f, k ? RED : GREEN, i < left ? 0.9f : 0.16f);

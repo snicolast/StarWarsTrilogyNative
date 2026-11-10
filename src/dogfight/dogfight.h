@@ -5,8 +5,8 @@
 // models where this simulation puts them, seen by its camera), a frame every
 // 1/60 s published as the game's would be.
 //
-// The mode is a last man standing: as many X-wings (the player's one of them)
-// as TIE fighters, each with a pilot of its own and the same shield, which
+// The mode is a last man standing: a few X-wings (the player's one of them)
+// against more TIE fighters, each with a pilot of its own and the same shield, which
 // comes back more slowly as ships fall and not at all for the last few. The
 // side with a ship left wins; the player's fall ends it. With it: the
 // X-wing's four cannons, a braking turn, and a target lock (a bracket round
@@ -66,7 +66,7 @@ int dogfight_result();
 int dogfight_left(bool foes);
 float dogfight_target_shield();
 float dogfight_took();
-int dogfight_side();      // fighters a side at the start
+int dogfight_side(bool foes);   // fighters of each side at the start (drawn anew for every match)
 // The player's fall on the view: a red flash (1 at the first blast, soon 0), then how far it has gone to black (0..1)
 float dogfight_flash();
 float dogfight_dark();
