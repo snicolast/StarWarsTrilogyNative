@@ -59,6 +59,9 @@ struct R3DNativeScene {
     // alpha is solid), their colour a brightness (they blink)
     std::vector<Vertex> lamps;
     std::string lamp_texture;
+    // Their halos: see-through triangles over them, each the colour of the
+    // lamps' image at its uv, as solid as its vertices' alpha (the colour's high byte)
+    std::vector<Vertex> halos;
     // The light they give to what is near, as points in the same space
     struct Glow {
         float pos[3] = {};

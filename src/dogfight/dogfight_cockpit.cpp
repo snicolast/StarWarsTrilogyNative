@@ -43,6 +43,8 @@ struct Lamp {
     V3 centre, facing;
     float area = 0;      // square metres
     uint32_t seed = 0;   // how it blinks
+    float uv[2] = {};    // a place of its own in the lamps' image (the middle of its biggest triangle): its colour
+    float biggest = 0;
 };
 
 struct Cockpit {
@@ -137,6 +139,11 @@ void find_lamps() {
         V3 n = cross(b - a, d - a);
         float area = 0.5f * std::sqrt(dot(n, n));
         l.centre = l.centre + (a + b + d) * (area / 3);
+        if (area > l.biggest) {
+            l.biggest = area;
+            for (int k = 0; k < 2; k++)
+                l.uv[k] = (c.lamp_verts[i * 3].uv[k] + c.lamp_verts[i * 3 + 1].uv[k] + c.lamp_verts[i * 3 + 2].uv[k]) / 3;
+        }
         l.facing = l.facing + n;
         l.area += area;
     }
@@ -360,6 +367,32 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway)
         std::vector<uint8_t> level(g_cockpit.lamps.size());
         for (size_t i = 0; i < level.size(); i++) level[i] = uint8_t(std::clamp(lamp_level(g_cockpit.lamps[i], time), 0.0f, 1.0f) * 255.0f + 0.5f);
         for (size_t i = 0; i < scene.lamps.size(); i++) scene.lamps[i].color = 0xFF000000u | level[g_cockpit.lamp_of[i / 3]] * 0x010101u;
+        // A halo round each small one that is lit: a disc in its plane, a
+        // little nearer the eye, fading out to three and a half times its size
+        // (the bloom is too coarse for lamps a few pixels wide)
+        for (size_t i = 0; i < g_cockpit.lamps.size(); i++) {
+            const Lamp& l = g_cockpit.lamps[i];
+            if (l.area > 4e-4f || level[i] < 40 || dot(l.facing, l.centre) >= 0) continue;
+            const float size = std::sqrt(l.area / 3.14159265f);
+            const V3 mid = l.centre * 0.994f;
+            const V3 r = unit(cross(l.facing, std::fabs(l.facing.y) < 0.9f ? V3{0, 1, 0} : V3{1, 0, 0})), u = cross(l.facing, r);
+            const uint32_t inner = uint32_t(0.5f * float(level[i]) + 0.5f) << 24 | 0xFFFFFFu, outer = 0xFFFFFFu;
+            auto corner = [&](float radius, int step, uint32_t color) {
+                const float a = float(step) * (6.2831853f / 12);
+                V3 q = mid + (r * std::cos(a) + u * std::sin(a)) * radius;
+                Vertex v;
+                v.pos[0] = q.x, v.pos[1] = q.y, v.pos[2] = q.z;
+                v.uv[0] = l.uv[0], v.uv[1] = l.uv[1];
+                v.color = color;
+                return v;
+            };
+            const float r1 = size * 1.2f, r2 = size * 3.5f + 0.002f;
+            for (int k = 0; k < 12; k++) {
+                Vertex c0 = corner(0, 0, inner), a1 = corner(r1, k, inner), b1 = corner(r1, k + 1, inner);
+                Vertex a2 = corner(r2, k, outer), b2 = corner(r2, k + 1, outer);
+                for (const Vertex& v : {c0, a1, b1, a1, a2, b2, a1, b2, b1}) scene.halos.push_back(v);
+            }
+        }
         scene.glows = g_cockpit.glows;
     }
     if (!g_cockpit.panel.found) return;

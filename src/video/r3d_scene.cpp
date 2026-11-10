@@ -667,7 +667,7 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
             memcpy(o.uv, q.uv, 8);
             o.color = 0xFFFFFFFFu;
             o.shade = float(q.color & 0xFF) / 255.0f - 1.0f - floor;
-            o.flags = R3D_TEXTURED | R3D_ALPHA_TEST | R3D_LUMINOUS | R3D_FIXED_SHADE | R3D_NO_SHADOW;   // (they glow: bloom)
+            o.flags = R3D_TEXTURED | R3D_ALPHA_TEST | R3D_LUMINOUS | R3D_FIXED_SHADE;
             o.replace = lamp_slot;
             verts.push_back(o);
         }
@@ -677,12 +677,27 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
         place(was, q.pos, o.prev);
         o.color = q.color;
         o.shade = -floor;   // (its colour as it is)
-        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE | R3D_NO_SHADOW;
+        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;
         verts.push_back(o);
     }
     v.opaque_count = uint32_t(verts.size()) - v.opaque_first;
     v.trans_first = uint32_t(verts.size());
-    out.polygons += v.opaque_count / 3;
+    // The lamps' halos: see-through, the colour of the lamps' image where
+    // each says, as solid as its vertices' alpha
+    if (lamp_slot)
+        for (const R3DNativeScene::Vertex& q : native_->halos) {
+            R3DVertex o{};
+            place(m, q.pos, o.pos);
+            place(was, q.pos, o.prev);
+            memcpy(o.uv, q.uv, 8);
+            o.color = q.color;
+            o.shade = -floor;
+            o.flags = R3D_TEXTURED | R3D_LUMINOUS | R3D_FIXED_SHADE;
+            o.replace = lamp_slot;
+            verts.push_back(o);
+        }
+    v.trans_count = uint32_t(verts.size()) - v.trans_first;
+    out.polygons += (v.opaque_count + v.trans_count) / 3;
     out.viewports.push_back(v);
     // Their light on what is near (the shader's glow lights: the lightsabres' in the duels)
     for (const R3DNativeScene::Glow& g : native_->glows) {

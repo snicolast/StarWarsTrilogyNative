@@ -684,12 +684,6 @@ void main() {
     // hides the glow of what is behind it.
     float peak = max(c.r, max(c.g, c.b));
     bool glows = (flags & (LUMINOUS | WORLD)) == (LUMINOUS | WORLD);
-    // A native scene's fixed lights (the cockpit's lamps and its screen):
-    // small, so they glow from a lower brightness on
-    if ((flags & (LUMINOUS | WORLD | NO_SHADOW)) == (LUMINOUS | NO_SHADOW)) {
-        out_glow = vec4(c.rgb * smoothstep(0.3, 0.75, peak), c.a);
-        return;
-    }
     // ... and, more gently, whatever else of the world is very bright (sunlit
     // surfaces and highlights above white with HDR lighting)
     vec3 glow = glows ? c.rgb * smoothstep(0.6, 1.0, peak)
