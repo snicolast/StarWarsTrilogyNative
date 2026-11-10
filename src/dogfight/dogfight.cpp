@@ -97,6 +97,7 @@ struct Sim {
     float reload = 0;   // seconds until the next bolt
     int cannon = 0;     // the one to fire next, of four
     int kills = 0;
+    int sounds = 0;        // DOGFIGHT_SOUND_* since they were last taken
     uint32_t target = 0;   // the id of the ship the target lock holds (0: none)
     bool lock_was = false;
     double time = 0;
@@ -169,6 +170,7 @@ void cannons(Sim& s, bool fire, float dt) {
     s.reload = std::max(0.0f, s.reload - dt);
     if (fire && s.reload <= 0) {
         s.reload = RELOAD;
+        s.sounds |= DOGFIGHT_SOUND_LASER;
         // The four wing tips: right and left, up and down, in turn
         static const float tip[4][2] = {{5.4f, -1.9f}, {-5.4f, 1.9f}, {-5.4f, -1.9f}, {5.4f, 1.9f}};
         Vec from = s.pos + s.at.right * tip[s.cannon][0] + s.at.down * tip[s.cannon][1] + s.at.fwd * 4.0f;
@@ -196,8 +198,10 @@ void cannons(Sim& s, bool fire, float dt) {
                     if (ship.id == s.target) s.target = 0;
                     s.ships.erase(s.ships.begin() + long(k));
                     s.kills++;
+                    s.sounds |= DOGFIGHT_SOUND_KILL;
                 } else {
                     blast(s, p + unit(b.vel) * -1.5f, ship.shape == &DESTROYER ? 6.0f : 2.5f);
+                    s.sounds |= DOGFIGHT_SOUND_HIT;
                 }
                 break;
             }
@@ -288,6 +292,11 @@ float dogfight_speed_part() { return std::clamp((g_shown_speed - SPEED_MIN) / (S
 int dogfight_ships() { return g_shown_ships; }
 int dogfight_kills() { return g_shown_kills; }
 bool dogfight_locked() { return g_shown_locked; }
+int dogfight_take_sounds() {
+    int s = g_sim.sounds;
+    g_sim.sounds = 0;
+    return s;
+}
 float dogfight_nearest() { return g_shown_nearest; }
 
 // The locked enemy on the view: corner brackets round it, and an arrow

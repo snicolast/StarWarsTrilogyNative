@@ -372,6 +372,23 @@ uint8_t dev_read8(uint32_t a) {
     return *dev_ptr(a);
 }
 
+// Debugging aid: SWT_MIDILOG=path writes the bytes the game sends to the sound
+// board, a line for each frame that has any: the frame, the top state and
+// its step, the triggers held (1 the first, 2 the second), then the bytes.
+// (To find which commands play which sound: the DOGFIGHT mode sends them itself)
+static void midi_log(uint8_t v) {
+    static FILE* f = getenv("SWT_MIDILOG") ? fopen(getenv("SWT_MIDILOG"), "w") : nullptr;
+    static uint64_t frame = ~0ull;
+    if (!f) return;
+    if (frame != g_frame) {
+        frame = g_frame;
+        fprintf(f, "\n%llu %u %d %d:", (unsigned long long)g_frame, (unsigned)rd32(0x2210E8), int(int16_t(rd16(0x221136))),
+                int(g_inputs.p[0].trigger) | int(g_inputs.p[0].offscreen) << 1);
+    }
+    fprintf(f, " %02X", v);
+    fflush(f);
+}
+
 void dev_write8(uint32_t a, uint8_t v) {
     a = io_addr(a);
     if (a >= 0xF01A0010 && a < 0xF01A0018) { g_security_first = true; g_security_pos = 0; }
@@ -393,6 +410,7 @@ void dev_write8(uint32_t a, uint8_t v) {
     if (a == 0xF1180010) g_irq_state &= ~v;   // tilegen IRQ acknowledge register (LE low byte)
     if (a == 0xF0080000) {   // MIDI byte to the sound board
         g_irq_state &= ~0x40;
+        midi_log(v);
         g_sound.midi_write(v);
     }
     if (a == 0xF0080004) {
@@ -1165,6 +1183,27 @@ void dogfight_begin() {
     fflush(stdout);
 }
 
+// Its sounds are the game's own: the bytes the game sends to the sound board
+// for each (SWT_MIDILOG shows them). SWT_DOGFIGHT_SOUND=laser,hit,kill gives
+// others, each as hex bytes ("" none): to try them out
+static void dogfight_sounds(int which) {
+    static std::vector<uint8_t> bytes[3];
+    static const bool read = [] {
+        const char* e = getenv("SWT_DOGFIGHT_SOUND");
+        for (int k = 0; e && k < 3; k++) {
+            unsigned v;
+            int n;
+            while (sscanf(e, " %2x%n", &v, &n) == 1) bytes[k].push_back(uint8_t(v)), e += n;
+            if (*e == ',') e++;
+        }
+        return true;
+    }();
+    (void)read;
+    for (int k = 0; k < 3; k++)
+        if (which >> k & 1)
+            for (uint8_t b : bytes[k]) g_sound.midi_write(b);
+}
+
 void dogfight_run() {
     const double tick = 1.0 / FRAME_HZ;
     double next = qpc_seconds();
@@ -1181,6 +1220,7 @@ void dogfight_run() {
         }
         if (now - next > 0.25) next = now;   // far behind (the window dragged): no catching up
         dogfight_step(float(tick));
+        dogfight_sounds(dogfight_take_sounds());
         g_frame++;          // the vblank the 2D layers go by
         video_snapshot();   // (blanked while flying: app.cpp, compose_2d)
         dogfight_publish(next);
