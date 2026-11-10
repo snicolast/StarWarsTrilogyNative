@@ -1183,12 +1183,16 @@ void dogfight_begin() {
     fflush(stdout);
 }
 
-// Its sounds are the game's own: the bytes the game sends to the sound board
-// for each (SWT_MIDILOG shows them). SWT_DOGFIGHT_SOUND=laser,hit,kill gives
-// others, each as hex bytes ("" none): to try them out
+// Its sounds are the game's own: the commands the game sends to the sound
+// board for each, as seen in a game of Yavin (SWT_MIDILOG): A0, a sound or
+// a voice, and how. The player's cannons are A0 23 with 01 and 00 in turn
+// (twice each: the four cannons, side by side); what the enemy fighters do
+// comes on voices 12 to 22, and 0A is what follows a kill (a guess: the
+// commonest of 0A, 0B and 0E). A hit that does not kill has no sound yet.
+// SWT_DOGFIGHT_SOUND=laser,hit,kill gives others, each as hex bytes ("" none): to try them out
 static void dogfight_sounds(int which) {
     static std::vector<uint8_t> bytes[3];
-    static const bool read = [] {
+    static const bool given = [] {
         const char* e = getenv("SWT_DOGFIGHT_SOUND");
         for (int k = 0; e && k < 3; k++) {
             unsigned v;
@@ -1196,12 +1200,23 @@ static void dogfight_sounds(int which) {
             while (sscanf(e, " %2x%n", &v, &n) == 1) bytes[k].push_back(uint8_t(v)), e += n;
             if (*e == ',') e++;
         }
-        return true;
+        return e != nullptr;
     }();
-    (void)read;
-    for (int k = 0; k < 3; k++)
-        if (which >> k & 1)
-            for (uint8_t b : bytes[k]) g_sound.midi_write(b);
+    if (given) {
+        for (int k = 0; k < 3; k++)
+            if (which >> k & 1)
+                for (uint8_t b : bytes[k]) g_sound.midi_write(b);
+        return;
+    }
+    static unsigned shots = 0, kills = 0;
+    if (which & DOGFIGHT_SOUND_LASER) {
+        const uint8_t m[3] = {0xA0, 0x23, uint8_t(shots++ >> 1 & 1 ? 0x00 : 0x01)};
+        for (uint8_t b : m) g_sound.midi_write(b);
+    }
+    if (which & DOGFIGHT_SOUND_KILL) {
+        const uint8_t m[3] = {0xA0, uint8_t(0x14 + (kills++ & 3)), 0x0A};
+        for (uint8_t b : m) g_sound.midi_write(b);
+    }
 }
 
 void dogfight_run() {
