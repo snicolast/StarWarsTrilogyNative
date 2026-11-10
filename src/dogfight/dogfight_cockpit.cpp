@@ -363,29 +363,34 @@ struct Holo {
 void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightContact>& contacts, const float* level_up) {
     static const struct Place {
         bool on = true;
-        float right = -0.25f, up = -0.087f, back = 0.42f, size = 0.045f;
+        float right = -0.16f, up = -0.155f, back = 0.50f, size = 0.05f;
         Place() {
             if (const char* e = getenv("SWT_DOGFIGHT_RADAR"))
                 if (sscanf(e, "%f,%f,%f,%f", &right, &up, &back, &size) < 1) on = false;
         }
     } place;
     if (!place.on) return;
-    const V3 C{place.right, place.up, -place.back};
+    const V3 C0{place.right, place.up, -place.back};
     const float R = place.size;
     // The ship's axes in the globe: right is right, ahead is away from the
     // pilot and tipped up by 35 degrees, so its level plane is seen from
     // above. Laid out about the line from the eye to the globe, not the
     // view's own axes: so far off to the side those came out sheared
     const float tip = 35.0f * 3.14159265f / 180.0f;
-    const V3 away = unit(C), X = unit(cross(V3{0, 1, 0}, away * -1)), up = cross(away * -1, X);
+    const V3 away = unit(C0), X = unit(cross(V3{0, 1, 0}, away * -1)), up = cross(away * -1, X);
     const V3 F = away * std::cos(tip) + up * std::sin(tip), U = up * std::cos(tip) - away * std::sin(tip);
     auto globe = [&](V3 d) { return X * d.x + U * d.y + F * d.z; };   // (right, up, ahead) of the ship
-    // A vector display's colours (R in the low byte): amber lines, the
-    // level plane in yellow, the enemy red, friends green
-    const uint32_t AMBER = 0x20A0FFu, YELLOW = 0x50F0FFu, RED = 0x2828FFu, GREEN = 0x50FF40u, PALE = 0xA0D8FFu;
-    // Its flicker steps as an old tube's does, fifteen times a second
-    const double tick = std::floor(time * 15.0);
-    Holo h{scene.holo, 0.86f + 0.14f * float(std::fabs(std::sin(tick * 12.9898)))};
+    // A hologram's colours (R in the low byte): the projector's pale blue,
+    // the level plane in white, the enemy red, friends green
+    const uint32_t BLUE = 0xFFB060u, WHITE = 0xFFF0E0u, RED = 0x3030FFu, GREEN = 0x60FF50u, PALE = 0xFFE0C0u;
+    // Now and then the whole picture slips sideways for an instant, as a
+    // poor signal does (the scan lines and the flicker are r3d.frag's)
+    scene.holo_time = float(std::fmod(time, 1000.0));
+    const double tick = std::floor(time * 20.0);
+    const double chance = std::fabs(std::sin(tick * 78.233) * 43758.5453);
+    const float slip = chance - std::floor(chance) > 0.965 ? R * 0.07f * (std::sin(tick * 3.7) > 0 ? 1.0f : -1.0f) : 0.0f;
+    const V3 C{C0.x + slip, C0.y, C0.z};
+    Holo h{scene.holo, 1.0f};
     const float thin = R * 0.014f;
     const int N = 40;
     auto ring = [&](V3 a, V3 b, float radius, float width, uint32_t rgb, float alpha) {   // a circle about C in the plane of a and b
@@ -399,21 +404,21 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
     for (int i = 0; i < 20; i++) {
         float t0 = float(i) * (6.2831853f / 20), t1 = float(i + 1) * (6.2831853f / 20);
         V3 a = C + (X * std::cos(t0) + F * std::sin(t0)) * R, b = C + (X * std::cos(t1) + F * std::sin(t1)) * R;
-        h.triangle(foot, a, b, AMBER, 0.03f);
-        h.triangle(C, a, b, AMBER, 0.06f);
+        h.triangle(foot, a, b, BLUE, 0.05f);
+        h.triangle(C, a, b, BLUE, 0.13f);
     }
     // The globe's outline as the eye sees it, the rim of the ship's plane and
     // a grid over it (the lines of a targeting computer), the line ahead brighter
     const V3 er = unit(cross(V3{0, 1, 0}, C)), eu = unit(cross(C, er));
-    ring(er, eu, R, thin, AMBER, 0.4f);
-    ring(X, F, R, thin, AMBER, 0.85f);
+    ring(er, eu, R, thin, BLUE, 0.4f);
+    ring(X, F, R, thin, BLUE, 0.85f);
     for (int i = -3; i <= 3; i++) {
         float k = float(i) / 4.0f, half = std::sqrt(1.0f - k * k);
-        if (i) h.line(C + (X * k - F * half) * R, C + (X * k + F * half) * R, thin, AMBER, 0.28f);
-        h.line(C + (F * k - X * half) * R, C + (F * k + X * half) * R, thin, AMBER, 0.28f);
+        if (i) h.line(C + (X * k - F * half) * R, C + (X * k + F * half) * R, thin, BLUE, 0.28f);
+        h.line(C + (F * k - X * half) * R, C + (F * k + X * half) * R, thin, BLUE, 0.28f);
     }
-    h.line(C - F * R, C, thin, AMBER, 0.28f);
-    h.line(C, C + F * R, thin * 1.7f, AMBER, 0.95f);
+    h.line(C - F * R, C, thin, BLUE, 0.28f);
+    h.line(C, C + F * R, thin * 1.7f, BLUE, 0.95f);
     h.dot(C, R * 0.035f, 0xFFFFFFu, 0.9f);   // the player
     // The battle's level plane: a ring that tips and rolls as the ship does,
     // and a mast on it towards its up, ending in a bar (seen under the ring:
@@ -421,12 +426,12 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
     if (level_up) {
         V3 n = unit(globe(V3{level_up[0], level_up[1], level_up[2]}));
         V3 a = unit(cross(n, std::fabs(n.x) < 0.9f ? X : U)), b = cross(n, a);
-        ring(a, b, R, thin * 1.8f, YELLOW, 0.9f);
+        ring(a, b, R, thin * 1.8f, WHITE, 0.9f);
         V3 top = C + n * (R * 0.6f);
-        h.line(C, top, thin * 1.8f, YELLOW, 0.9f);
+        h.line(C, top, thin * 1.8f, WHITE, 0.9f);
         // (the bar across, as the eye sees it)
         V3 across = unit(cross(n, C)) * (R * 0.16f);
-        h.line(top - across, top + across, thin * 1.8f, YELLOW, 0.9f);
+        h.line(top - across, top + across, thin * 1.8f, WHITE, 0.9f);
     }
     // The ships: how far from the middle by the root of the distance (3000 at the rim)
     for (const DogfightContact& c : contacts) {
@@ -456,9 +461,9 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
     if (scene.glows.size() < 8) {
         R3DNativeScene::Glow g;
         g.pos[0] = C.x, g.pos[1] = C.y, g.pos[2] = C.z;
-        g.color[0] = 1.0f, g.color[1] = 0.62f, g.color[2] = 0.15f;
+        g.color[0] = 0.35f, g.color[1] = 0.7f, g.color[2] = 1.0f;
         g.radius = R * 2.2f;
-        g.strength = 0.3f * h.fade;
+        g.strength = 0.3f;
         scene.glows.push_back(g);
     }
 }

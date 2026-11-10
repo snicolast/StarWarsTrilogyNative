@@ -678,6 +678,21 @@ void main() {
         float d = texelFetch(scene_depth, ivec2(gl_FragCoord.xy), 0).r;
         if (d > 0.0) c.a *= clamp((view_pos.z + 1e-3 / d) / atm.soft.y, 0.0, 1.0);
     }
+    // A native scene's hologram (luminous, untextured, R3D_NO_SHADOW without
+    // R3D_WORLD; its time in the specular slot): fine scan lines drifting
+    // down, a bright band rolling up through it now and then, a flicker, and
+    // its colours washed towards the projector's blue
+    if ((flags & (LUMINOUS | WORLD | NO_SHADOW | TEXTURED)) == (LUMINOUS | NO_SHADOW)) {
+        float time = params.z;
+        float y = view_pos.y / max(-view_pos.z, 1e-4);   // up the screen, whatever its size
+        float scan = 0.62 + 0.38 * sin((y * 300.0 + time * 2.5) * 6.2831853);
+        float band = smoothstep(0.985, 1.0, sin(y * 14.0 - time * 2.1));
+        float tick = floor(time * 24.0);
+        float flicker = 0.88 + 0.12 * fract(sin(tick * 12.9898) * 43758.5453);
+        float lum = dot(c.rgb, vec3(0.3, 0.5, 0.2));
+        c.rgb = mix(c.rgb, vec3(0.45, 0.78, 1.0) * (lum + 0.25), 0.3) * (1.0 + 0.8 * band);
+        c.a = clamp(c.a * scan * flicker * (1.0 + 1.5 * band), 0.0, 1.0);
+    }
     out_color = c;
     // Bloom source: fire, explosions and lights are drawn unlit (luminous);
     // only their bright part glows. Everything else writes no glow, so it

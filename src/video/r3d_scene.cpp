@@ -770,7 +770,8 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
         place(was, q.pos, o.prev);
         o.color = q.color;
         o.shade = -floor;
-        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;
+        o.spec = native_->holo_time;
+        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE | R3D_NO_SHADOW;   // (untextured, luminous, not of the world: a hologram to r3d.frag)
         verts.push_back(o);
     }
     v.trans_count = uint32_t(verts.size()) - v.trans_first;
