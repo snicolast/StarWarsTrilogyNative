@@ -846,6 +846,17 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
         }
         return half;
     };
+    // A ship's shield over its brackets (`half`: their half size): four pips, the ones it has left lit
+    auto pips = [&](float right, float up, float ahead, float half, float shield, bool shown, uint32_t color) {
+        const int left = int(std::ceil(shield * 4 - 0.01f));
+        Vec mid = Vec{right, up, -ahead} * D + Vec{0, half + D * 0.005f, 0};
+        const float pip = half * 2 / 4;
+        for (int k = 0; k < 4; k++) {
+            float x0 = mid.x - half + pip * float(k) + pip * 0.12f, x1 = x0 + pip * 0.76f;
+            bool lit = k < left;
+            line(Vec{x0, mid.y, mid.z}, Vec{shown ? x1 : x0, mid.y, mid.z}, !shown ? 0 : lit ? D * 0.0032f : D * 0.0009f, lit ? color : 0xFF2090A0u);
+        }
+    };
     // The one attacking: orange brackets round it, or when it is out of view
     // an orange arrow, farther out than the locked one's (always drawn, with
     // no size when not shown). The locked one's own marks say it when it is both
@@ -866,7 +877,8 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
             if (shown && threat->id == s.target) shown = std::fmod(s.time, 0.4) < 0.25;
         }
         arrow(right, up, 0.27f, shown, ORANGE, nullptr, nullptr);
-        brackets(right, up, ahead, looks, framed, ORANGE);
+        float half = brackets(right, up, ahead, looks, framed, ORANGE);
+        pips(right, up, ahead, half, threat ? threat->shield : 0, framed, ORANGE);
     }
     // A fighter has fallen: for a moment, high on the view, the fighters left
     // on each side (the friends' in green, the enemy's in red), the figure
@@ -909,15 +921,7 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
         float looks = std::max(ship->shape->radius * 1.8f / dist, 0.014f);
         bool on = front && std::sqrt(right * right + up * up) < looks;
         bracket = brackets(right, up, ahead, looks, front, on ? RED : YELLOW);
-        // Its shield over the brackets: four pips, the ones it has left lit
-        const int left = int(std::ceil(ship->shield * 4 - 0.01f));
-        Vec mid = Vec{right, up, -ahead} * D + Vec{0, bracket + D * 0.005f, 0};
-        const float pip = bracket * 2 / 4;
-        for (int k = 0; k < 4; k++) {
-            float x0 = mid.x - bracket + pip * float(k) + pip * 0.12f, x1 = x0 + pip * 0.76f;
-            bool lit = k < left;
-            line(Vec{x0, mid.y, mid.z}, Vec{front ? x1 : x0, mid.y, mid.z}, !front ? 0 : lit ? D * 0.0032f : D * 0.0009f, lit ? YELLOW : 0xFF2090A0u);
-        }
+        pips(right, up, ahead, bracket, ship->shield, front, YELLOW);
     }
     {
         const bool out = !front || std::fabs(right / ahead) > 0.58f || std::fabs(up / ahead) > 0.40f;
