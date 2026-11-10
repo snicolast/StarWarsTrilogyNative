@@ -153,6 +153,12 @@ struct Sim {
     bool shaken = false;   // this hard turn has had its try at shaking them off
     float rested = 9;      // seconds since it was last used (the charge comes back after a moment)
     bool view_was = false;
+    // The help with the aim: the enemy the cannons would be turned on now
+    // (0: none near enough the nose), where a bolt would meet it, and how far
+    // off the nose that is (radians)
+    uint32_t aim = 0;
+    Vec aim_at;
+    float aim_off = 9;
     float intro = 0;       // seconds left of the flying in at a match's start
     double hurt = -99;     // when the player was last hit
     // Last man standing: how many fighters there were at the start (the
@@ -204,6 +210,11 @@ constexpr float FIGHTER_BALL = 9.5f;
 // second's worth coming back after that long unhurt, while most still fly
 // A match begins with INTRO seconds of flying in: every fighter at INTRO_SPEED, no one firing
 constexpr float INTRO = 4.5f, INTRO_SPEED = 100;
+// The help with the aim (it is an arcade game): with an enemy's meeting point
+// within AIM_CONE of the nose and AIM_RANGE away, the bolts go to it and not
+// dead ahead; and within AIM_SLOW the stick turns the ship more slowly, down
+// to AIM_SLOWEST of its rate on the point itself, so the nose settles on it
+constexpr float AIM_CONE = 0.105f, AIM_SLOW = 0.19f, AIM_SLOWEST = 0.45f, AIM_RANGE = 1500;
 constexpr float DEFEAT_TIME = 7;   // seconds from the player's fall to the next match
 // ... and less from WANE_FROM seconds into the match, none WANE_FOR later: no match goes on for ever
 constexpr float WANE_FROM = 90, WANE_FOR = 90;
@@ -282,6 +293,21 @@ bool inside(const Ship& ship, Vec p) {
 // The cannons fire while the button is held; the bolts fly, and what they
 // meet sparks, or blows up when it has taken enough
 void cannons(Sim& s, bool fire, float dt) {
+    // Which enemy the aim is helped to: the locked one if it is near enough
+    // the nose, else the nearest the nose
+    s.aim = 0, s.aim_off = 9;
+    for (const Ship& ship : s.ships) {
+        if (!foe(ship)) continue;
+        Vec d = ship.pos + s.pos * -1;
+        float dist = std::sqrt(dot(d, d));
+        if (dist > AIM_RANGE || dist < 1) continue;
+        // (where a bolt fired now meets it: it flies on meanwhile)
+        Vec meet = ship.pos + ship.at.fwd * (ship.speed * dist / (BOLT_SPEED + s.speed));
+        float off = std::acos(std::clamp(dot(unit(meet + s.pos * -1), s.at.fwd), -1.0f, 1.0f));
+        if (off > AIM_SLOW) continue;
+        const bool locked = ship.id == s.target;
+        if (locked ? off < AIM_SLOW : off < s.aim_off && !(s.aim && s.aim == s.target)) s.aim = ship.id, s.aim_at = meet, s.aim_off = off;
+    }
     s.reload = std::max(0.0f, s.reload - dt);
     if (fire && s.reload <= 0) {
         s.reload = RELOAD;
@@ -290,6 +316,7 @@ void cannons(Sim& s, bool fire, float dt) {
         static const float tip[4][2] = {{5.4f, -1.9f}, {-5.4f, 1.9f}, {-5.4f, -1.9f}, {5.4f, 1.9f}};
         Vec from = s.pos + s.at.right * tip[s.cannon][0] + s.at.down * tip[s.cannon][1] + s.at.fwd * 4.0f;
         Vec dir = unit(s.pos + s.at.fwd * CONVERGE + from * -1);
+        if (s.aim && s.aim_off < AIM_CONE) dir = unit(s.aim_at + from * -1);
         s.cannon = (s.cannon + 1) & 3;
         s.bolts.push_back({from, dir * BOLT_SPEED + s.at.fwd * s.speed, BOLT_LIFE, 0, s.next_id++, false, 0});
     }
@@ -674,8 +701,10 @@ void step(float dt) {
     // Turns best at half throttle, a third slower flat out or crawling; near twice as tight in a braking turn
     float agile = 1.0f - 0.33f * std::fabs(s.throttle - 0.5f) * 2.0f;
     if (s.drifting) agile = 1.8f;
+    // (near an enemy's meeting point the stick is finer: see AIM_SLOW; not in a braking turn)
+    const float fine = s.aim && !s.drifting ? AIM_SLOWEST + (1 - AIM_SLOWEST) * std::clamp(s.aim_off / AIM_SLOW, 0.0f, 1.0f) : 1.0f;
     if (s.over == DOGFIGHT_DEFEAT) s.at.turn(0.05f * dt, 0, 0.9f * dt);   // ... and the ship rolls on, out of hand
-    else s.at.turn(c.pitch * TURN_RATE * agile * dt, c.yaw * TURN_RATE * agile * dt, c.roll * ROLL_RATE * dt);
+    else s.at.turn(c.pitch * TURN_RATE * agile * fine * dt, c.yaw * TURN_RATE * agile * fine * dt, c.roll * ROLL_RATE * dt);
     s.pos = s.pos + s.at.fwd * (s.speed * dt);
     s.time += dt;
     {
@@ -941,6 +970,20 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
                  lost ? 0xFFFFFFFFu : lit ? RED : 0xFF2090A0u);
         }
     }
+    // The help with the aim has an enemy: a small diamond where the bolts
+    // will go (its meeting point), red once they do. Four lines, there with
+    // no size the rest of the time
+    {
+        Vec d = s.aim_at + cam * -1;
+        float dist = std::sqrt(dot(d, d));
+        const float ahead = dist > 1 ? dot(d, s.at.fwd) / dist : 0;
+        const bool shown = s.aim && !s.over && ahead > 0.1f;
+        Vec c = shown ? Vec{dot(d, s.at.right) / dist, -dot(d, s.at.down) / dist, -ahead} * (D / ahead) : Vec{0, 0, -D};
+        const float r = shown ? D * 0.006f : 0;
+        const bool on = s.aim_off < AIM_CONE;
+        const Vec e[4] = {c + Vec{r, 0, 0}, c + Vec{0, r, 0}, c + Vec{-r, 0, 0}, c + Vec{0, -r, 0}};
+        for (int k = 0; k < 4; k++) line(e[k], e[(k + 1) & 3], shown ? D * (on ? 0.0022f : 0.0014f) : 0, on ? RED : YELLOW);
+    }
     // A fighter has fallen: for a moment, high on the view, the fighters left
     // on each side (the friends' in green, the enemy's in red), the figure
     // that changed blinking. Fifteen lines, there with no size the rest of the time
@@ -978,9 +1021,9 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
     const bool front = ahead > 0.05f;
     float bracket = 0;   // its half size
     {
-        // on it: the nose points inside the brackets
+        // on it: the cannons are turned on it (the help with the aim)
         float looks = std::max(ship->shape->radius * 1.8f / dist, 0.014f);
-        bool on = front && std::sqrt(right * right + up * up) < looks;
+        bool on = front && s.aim == ship->id && s.aim_off < AIM_CONE;
         bracket = brackets(right, up, ahead, looks, front, on ? RED : YELLOW);
         pips(right, up, ahead, bracket, ship->shield, front, YELLOW);
     }
