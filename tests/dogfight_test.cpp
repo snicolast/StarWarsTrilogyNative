@@ -187,7 +187,7 @@ int main() {
         CHECK(lost);
         for (int i = 0; i < 60 * 300 && dogfight_result() != DOGFIGHT_DEFEAT; i++) dogfight_step(1.0f / 60);
         CHECK(dogfight_result() == DOGFIGHT_DEFEAT && dogfight_shield() == 0);
-        for (int i = 0; i < 60 * 7; i++) dogfight_step(1.0f / 60);
+        for (int i = 0; i < 60 * 8; i++) dogfight_step(1.0f / 60);
         CHECK(dogfight_result() == 0 && dogfight_left(false) == 6 && dogfight_left(true) == 6 && dogfight_shield() == 1);
         dogfight_set_ai(false);
         dogfight_reset();

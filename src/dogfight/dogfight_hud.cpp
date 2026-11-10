@@ -53,7 +53,15 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
     Canvas cv{front, w, h};
     // How the match went, across the middle (over the cockpit too), with the
     // player's kills and the time it took
-    if (const int result = dogfight_result()) {
+    // (the player's fall first: the view flashes red, then goes to black, and the words come over that)
+    const float flash = dogfight_flash(), dark = dogfight_dark();
+    if (flash > 0 || dark > 0) {
+        // (premultiplied BGRA: black as solid as `dark`, and the flash's red over it)
+        const float red = 0.55f * flash * (1 - dark);
+        const uint32_t veil = uint32_t(std::min(1.0f, dark + red) * 255.0f + 0.5f) << 24 | uint32_t(red * 255.0f + 0.5f) << 16 | uint32_t(red * 0.18f * 255.0f + 0.5f) << 8;
+        cv.box(0, 0, w, h, veil);
+    }
+    if (const int result = dogfight_result(); result == DOGFIGHT_VICTORY || dark >= 0.8f) {
         const char* words = result == DOGFIGHT_VICTORY ? "VICTORY" : "DEFEATED";
         cv.text((w - 6 * 4 * int(strlen(words))) / 2, h / 2 - 60, words, YELLOW, 4);
         char line[48];

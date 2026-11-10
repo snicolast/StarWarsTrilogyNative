@@ -111,6 +111,8 @@ struct Blast {
     float radius = 1;
     float frame = 2;
     uint32_t id = 0;
+    bool riding = false;   // it goes with the player's ship, `ride` from it (right, down, ahead)
+    Vec ride;
 };
 
 struct Sim {
@@ -154,6 +156,7 @@ struct Sim {
     // DOGFIGHT_DEFEAT) and the seconds left until the next begins, how long
     // it took, and how much of the shields' return is left (it wanes as ships fall)
     int total = 0, over = 0;
+    int bursts = 0;   // the explosions of the player's own ship so far
     float over_left = 0, took = 0, regen = 1;
     uint32_t target = 0;   // the id of the ship the target lock holds (0: none)
     bool lock_was = false;
@@ -169,7 +172,7 @@ std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
 std::atomic<int> g_shown_message{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false};
 std::atomic<int> g_shown_result{0}, g_shown_friends{0}, g_shown_foes{0};
-std::atomic<float> g_shown_target_shield{-1}, g_shown_took{0};
+std::atomic<float> g_shown_target_shield{-1}, g_shown_took{0}, g_shown_flash{0}, g_shown_dark{0};
 std::atomic<float> g_shown_shield{1}, g_shown_push{0}, g_shown_charge{1};
 bool g_ai = true;   // for the HUD, drawn on another thread
 
@@ -188,6 +191,7 @@ constexpr int ATTACKERS = 2;
 // with the same shield: a hit's worth of it (four bring a ship down), a
 // second's worth coming back after that long unhurt, while most still fly
 constexpr int SIDE = 6;
+constexpr float DEFEAT_TIME = 7;   // seconds from the player's fall to the next match
 // (the friends' aim against the enemy's: tighter, as the TIE is the smaller and nimbler ship; set so
 // that the sides are about even with the player doing a fair share)
 constexpr float FRIEND_SPREAD = 0.7f;
@@ -229,12 +233,15 @@ void reset() {
 // A friend's line, said `delay` seconds from now (one at a time, with a rest between)
 void say(Sim& s, int what, float delay) {
     if (s.say || s.voice_rest > 0) return;
+    bool anyone = false;   // (with no friend left there is no one to say it)
+    for (const Ship& ship : s.ships) anyone |= friendly(ship);
+    if (!anyone) return;
     s.say = what, s.say_in = delay;
 }
 
 void blast(Sim& s, Vec pos, float radius) {
     if (s.blasts.size() >= 16) s.blasts.erase(s.blasts.begin());
-    s.blasts.push_back({pos, radius, 2.0f, s.next_id++});
+    s.blasts.push_back({pos, radius, 2.0f, s.next_id++, false, {}});
 }
 
 // Whether the point p lies in the ship. Fighters: a ball a little bigger
@@ -692,10 +699,9 @@ void step(float dt) {
     if (!s.over) {
         s.took += dt;
         if (s.shield <= 0.001f) {
-            s.over = DOGFIGHT_DEFEAT, s.over_left = 6;
+            s.over = DOGFIGHT_DEFEAT, s.over_left = DEFEAT_TIME;
             s.shield = 0, s.target = 0, s.threat = 0, s.warning = false;
-            blast(s, s.pos + s.at.fwd * 14.0f, 9.0f);
-            s.sounds |= DOGFIGHT_SOUND_KILL;
+            s.say = 0;
             s.sway[0] += 0.05f, s.sway[2] += 0.12f, s.sway[5] -= 0.03f;
         } else if (g_ai && foes == 0) {
             s.over = DOGFIGHT_VICTORY, s.over_left = 8;
@@ -704,6 +710,26 @@ void step(float dt) {
         }
     } else if ((s.over_left -= dt) <= 0) {
         reset();
+    } else if (s.over == DOGFIGHT_DEFEAT) {
+        // The player's ship blows up round the eye: a few of the game's
+        // explosions one after another, just ahead, that go with the ship
+        const float since = DEFEAT_TIME - s.over_left;
+        while (s.bursts < 5 && since >= 0.28f * float(s.bursts)) {
+            blast(s, s.pos, s.bursts == 0 ? 11.0f : rnd(6.0f, 10.0f));
+            s.blasts.back().riding = true;
+            s.blasts.back().ride = s.bursts == 0 ? Vec{0, 0, 13} : Vec{rnd(-5, 5), rnd(-3.5f, 3.5f), rnd(8, 15)};
+            s.sounds |= DOGFIGHT_SOUND_KILL;
+            s.sway[0] += rnd(-0.03f, 0.03f), s.sway[2] += rnd(-0.08f, 0.08f);
+            s.bursts++;
+        }
+    }
+    for (Blast& b : s.blasts)
+        if (b.riding) b.pos = s.pos + s.at.right * b.ride.x + s.at.down * b.ride.y + s.at.fwd * b.ride.z;
+    // What the view does meanwhile: a red flash at the first blast, then it goes to black
+    {
+        const float since = s.over == DOGFIGHT_DEFEAT ? DEFEAT_TIME - s.over_left : -1;
+        g_shown_flash = since < 0 ? 0.0f : std::clamp(1 - since / 0.5f, 0.0f, 1.0f);
+        g_shown_dark = since < 0 ? 0.0f : std::clamp((since - 1.0f) / 1.3f, 0.0f, 1.0f);
     }
     for (Blast& b : s.blasts) b.frame += 45.0f * dt;   // the fireball: a second
     s.blasts.erase(std::remove_if(s.blasts.begin(), s.blasts.end(), [](const Blast& b) { return b.frame > 46.0f; }), s.blasts.end());
@@ -750,6 +776,9 @@ int dogfight_result() { return g_shown_result; }
 int dogfight_left(bool foes) { return foes ? g_shown_foes : g_shown_friends; }
 float dogfight_target_shield() { return g_shown_target_shield; }
 float dogfight_took() { return g_shown_took; }
+int dogfight_side() { return SIDE; }
+float dogfight_flash() { return g_shown_flash; }
+float dogfight_dark() { return g_shown_dark; }
 void dogfight_set_ai(bool on) { g_ai = on; }
 int dogfight_take_sounds() {
     int s = g_sim.sounds;

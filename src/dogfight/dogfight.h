@@ -66,6 +66,10 @@ int dogfight_result();
 int dogfight_left(bool foes);
 float dogfight_target_shield();
 float dogfight_took();
+int dogfight_side();      // fighters a side at the start
+// The player's fall on the view: a red flash (1 at the first blast, soon 0), then how far it has gone to black (0..1)
+float dogfight_flash();
+float dogfight_dark();
 // The enemy pilots (on unless told): off, the enemy fighters stand still (the tests)
 void dogfight_set_ai(bool on);
 // What has sounded since the last call (game thread, after a step): bits

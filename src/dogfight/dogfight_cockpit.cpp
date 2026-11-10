@@ -459,6 +459,39 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
         V3 across = unit(cross(n, C)) * (R * 0.16f);
         h.line(top - across, top + across, thin * 1.8f, WHITE, 0.9f);
     }
+    // Over the globe, the fighters left on each side: the friends' in green
+    // at the left (the player among them), the enemy's in red at the right,
+    // each a big figure over a row of pips, one a fighter (faint: fallen).
+    // When one falls its side's figure swells and blinks for a moment
+    {
+        static int was[2] = {0, 0};
+        static double fell[2] = {-99, -99};
+        static const uint8_t strokes[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bit 0 the top, then clockwise, bit 6 the middle
+        const int side = dogfight_side();
+        for (int k = 0; k < 2; k++) {
+            const int left = std::clamp(dogfight_left(k == 1), 0, 9);
+            if (left < was[k]) fell[k] = time;
+            if (time < fell[k]) fell[k] = -99;   // (a new flight)
+            was[k] = left;
+            const float since = float(time - fell[k]);
+            const bool news = since < 2.5f;
+            const bool lit = !news || std::fmod(since, 0.3f) < 0.19f;
+            const float grow = news ? 1.0f + 0.5f * std::max(0.0f, 1 - since / 0.6f) : 1.0f;
+            const uint32_t rgb = news && lit ? WHITE : k ? RED : GREEN;
+            const V3 at = C + eu * (R * 1.58f) + X * (R * (k ? 0.5f : -0.5f));
+            const float high = R * 0.42f * grow, wide = R * 0.24f * grow, stroke = thin * (news ? 3.2f : 2.4f);
+            const V3 x0 = X * (-wide * 0.5f), x1 = X * (wide * 0.5f), y1 = eu * (high * 0.5f), y0 = eu * (-high * 0.5f), ym{0, 0, 0};
+            const V3 seg[7][2] = {{x0 + y1, x1 + y1}, {x1 + y1, x1 + ym}, {x1 + ym, x1 + y0}, {x0 + y0, x1 + y0}, {x0 + ym, x0 + y0}, {x0 + y1, x0 + ym}, {x0 + ym, x1 + ym}};
+            if (lit)
+                for (int j = 0; j < 7; j++)
+                    if (strokes[left] >> j & 1) h.line(at + seg[j][0], at + seg[j][1], stroke, rgb, 0.95f);
+            const float gap = R * 0.105f;
+            for (int i = 0; i < side; i++) {
+                V3 pip = C + eu * (R * 1.2f) + X * (R * (k ? 0.5f : -0.5f) + gap * (float(i) - float(side - 1) * 0.5f));
+                h.dot(pip, R * 0.03f, k ? RED : GREEN, i < left ? 0.9f : 0.16f);
+            }
+        }
+    }
     // The ships: how far from the middle by the root of the distance (3000 at the rim)
     for (const DogfightContact& c : contacts) {
         V3 d{c.right, c.up, c.ahead};
