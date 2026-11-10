@@ -79,6 +79,9 @@ struct R3DNativeScene {
     // Their halos: see-through triangles over them, each the colour of the
     // lamps' image at its uv, as solid as its vertices' alpha (the colour's high byte)
     std::vector<Vertex> halos;
+    // Glowing see-through triangles over all of that, untextured, as solid
+    // as their vertices' alpha (the cockpit's holographic radar)
+    std::vector<Vertex> holo;
     // The light they give to what is near, as points in the same space
     struct Glow {
         float pos[3] = {};

@@ -65,7 +65,24 @@ bool dogfight_cockpit_on();
 // time: seconds flown (its lamps blink). sway: how the cockpit is thrown about
 // now, a turn about the eye as a rotation vector (radians) and a shift
 // (units), in the view's axes (x right, y up, -z ahead); null: none
-void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway);
+// What its radar shows: where each other ship is from the player's (to its
+// right, above it, ahead of it; the game's units) and what it is
+struct DogfightContact {
+    float right = 0, up = 0, ahead = 0;
+    float nose[3] = {0, 0, 1};   // where it points, the same way (right, up, ahead)
+    enum Kind { FRIEND, FOE, CAPITAL } kind = FOE;
+};
+// The radar: a holographic globe over the left of the dashboard, drawn as a
+// vector display of the seventies would (amber lines, a grid, square blips,
+// a picture that steps rather than glides). The player is at its middle, the
+// nose pointing away from the pilot; each fighter a blip on a stalk from the
+// ship's own level plane, nearer the rim the farther it is, the capital ships
+// wedges pointing where they head. A yellow ring with a mast is the battle's
+// level plane and its up (`level_up`: the world's up as right, up, ahead of
+// the ship), so the pilot sees which way up the ship is
+//   SWT_DOGFIGHT_RADAR=right,up,back,size   (metres from the eye; default -0.25,-0.087,0.42,0.045; "off")
+void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway, const std::vector<DogfightContact>& contacts,
+                         const float* level_up);
 
 // The mode's loop (runtime.cpp, game thread). begin: the stage is loaded
 // (called from the unseen run), the first native frame is published. run:

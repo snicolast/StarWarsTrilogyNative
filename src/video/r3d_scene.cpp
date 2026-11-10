@@ -661,7 +661,7 @@ void R3DSceneBuilder::native_items() {
 // world's ambient occlusion and atmosphere leave them alone). They do not
 // move on the screen, so they need no pairing with the previous frame.
 void R3DSceneBuilder::native_fixed(R3DScene& out) {
-    if ((!native_->fixed || native_->fixed->empty()) && native_->lights.empty()) return;
+    if ((!native_->fixed || native_->fixed->empty()) && native_->lights.empty() && native_->holo.empty()) return;
     const R3DViewport* scene = nullptr;
     for (const R3DViewport& v : out.viewports)
         if (v.node == native_viewport_) scene = &v;
@@ -764,6 +764,15 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
             o.replace = lamp_slot;
             verts.push_back(o);
         }
+    for (const R3DNativeScene::Vertex& q : native_->holo) {
+        R3DVertex o{};
+        place(m, q.pos, o.pos);
+        place(was, q.pos, o.prev);
+        o.color = q.color;
+        o.shade = -floor;
+        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;
+        verts.push_back(o);
+    }
     v.trans_count = uint32_t(verts.size()) - v.trans_first;
     out.polygons += (v.opaque_count + v.trans_count) / 3;
     out.viewports.push_back(v);

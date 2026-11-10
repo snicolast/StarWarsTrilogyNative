@@ -286,7 +286,21 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
     Vec cam = s.pos + s.at.right * eye.right + s.at.down * -eye.up + s.at.fwd * eye.fwd;
     scene->cam_pos[0] = cam.x, scene->cam_pos[1] = cam.y, scene->cam_pos[2] = cam.z;
     // (a cockpit of the user's takes the place of the game's ship round the camera)
-    if (dogfight_cockpit_on()) dogfight_cockpit_add(*scene, s.time, s.sway);
+    if (dogfight_cockpit_on()) {
+        std::vector<DogfightContact> contacts;
+        for (const Ship& ship : s.ships) {
+            Vec d = ship.pos + s.pos * -1;
+            DogfightContact c;
+            c.right = dot(d, s.at.right), c.up = -dot(d, s.at.down), c.ahead = dot(d, s.at.fwd);
+            c.nose[0] = dot(ship.at.fwd, s.at.right), c.nose[1] = -dot(ship.at.fwd, s.at.down), c.nose[2] = dot(ship.at.fwd, s.at.fwd);
+            c.kind = ship.shape == &DESTROYER ? DogfightContact::CAPITAL
+                     : ship.shape == &TIE || ship.shape == &TIE_ADVANCED ? DogfightContact::FOE : DogfightContact::FRIEND;
+            contacts.push_back(c);
+        }
+        // The battle's up (the world's y points down)
+        const float level_up[3] = {-s.at.right.y, s.at.down.y, -s.at.fwd.y};
+        dogfight_cockpit_add(*scene, s.time, s.sway, contacts, level_up);
+    }
     else if (eye.ship) {
         R3DNativeScene::Item it;
         it.count = XWING.count;
