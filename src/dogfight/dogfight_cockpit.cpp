@@ -387,7 +387,11 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway)
     d.text(x, 45, "THR", GREEN);
     const float bar = x + 24, bar_w = wide - 24;
     d.box(bar, 45, bar + bar_w, 52, DIM);
-    d.box(bar, 45, bar + bar_w * std::clamp(dogfight_throttle(), 0.0f, 1.0f), 52, YELLOW, 2);
+    // The bar fills with the speed the ship has; a mark stands where the
+    // throttle asks it to be, and the bar comes up to it
+    d.box(bar, 45, bar + bar_w * dogfight_speed_part(), 52, YELLOW, 2);
+    const float mark = bar + (bar_w - 2) * std::clamp(dogfight_throttle(), 0.0f, 1.0f);
+    d.box(mark, 43, mark + 2, 54, GREEN, 3);
     snprintf(number, sizeof(number), "CONTACTS %d", dogfight_ships());
     d.text(x, 62, number, GREEN);
     snprintf(number, sizeof(number), "NEAREST %d", std::clamp(int(dogfight_nearest() + 0.5f), 0, 99999));

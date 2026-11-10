@@ -63,6 +63,8 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
     const int bar_x = after + 6, bar_w = 60;
     cv.box(bar_x - 1, y - 1, bar_x + bar_w + 1, y + 8, EDGE);
     cv.box(bar_x, y, bar_x + bar_w, y + 7, DIM);
-    cv.box(bar_x, y, bar_x + int(float(bar_w) * std::clamp(dogfight_throttle(), 0.0f, 1.0f) + 0.5f), y + 7, YELLOW);
+    cv.box(bar_x, y, bar_x + int(float(bar_w) * dogfight_speed_part() + 0.5f), y + 7, YELLOW);
+    const int mark = bar_x + int(float(bar_w - 2) * std::clamp(dogfight_throttle(), 0.0f, 1.0f) + 0.5f);
+    cv.box(mark, y - 1, mark + 2, y + 8, GREEN);   // where the throttle asks the speed to be
     cv.frame(bar_x - 1, y - 1, bar_x + bar_w + 1, y + 8, GREEN);
 }

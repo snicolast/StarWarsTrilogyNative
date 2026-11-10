@@ -165,6 +165,7 @@ void dogfight_reset() {
 void dogfight_step(float dt) { step(dt); }
 float dogfight_speed() { return g_shown_speed; }
 float dogfight_throttle() { return g_shown_throttle; }
+float dogfight_speed_part() { return std::clamp((g_shown_speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0.0f, 1.0f); }
 int dogfight_ships() { return int(g_sim.ships.size()); }
 float dogfight_nearest() { return g_shown_nearest; }
 

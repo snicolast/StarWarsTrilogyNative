@@ -34,6 +34,9 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene();
 // Its numbers, for the screen and the tests: speed (units a second), throttle 0..1
 float dogfight_speed();
 float dogfight_throttle();
+// The speed between the slowest and the fastest the throttle gives, 0..1: it
+// follows the throttle with the ship's inertia
+float dogfight_speed_part();
 int dogfight_ships();
 float dogfight_nearest();   // distance to the nearest ship (0: none)
 // Its HUD into the game's 2D front layer (w x h BGRA, alpha in the top byte;
