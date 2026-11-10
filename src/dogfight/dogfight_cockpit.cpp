@@ -376,7 +376,7 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway)
             const float size = std::sqrt(l.area / 3.14159265f);
             const V3 mid = l.centre * 0.994f;
             const V3 r = unit(cross(l.facing, std::fabs(l.facing.y) < 0.9f ? V3{0, 1, 0} : V3{1, 0, 0})), u = cross(l.facing, r);
-            const uint32_t inner = uint32_t(0.5f * float(level[i]) + 0.5f) << 24 | 0xFFFFFFu, outer = 0xFFFFFFu;
+            const uint32_t inner = uint32_t(0.25f * float(level[i]) + 0.5f) << 24 | 0xFFFFFFu, outer = 0xFFFFFFu;
             auto corner = [&](float radius, int step, uint32_t color) {
                 const float a = float(step) * (6.2831853f / 12);
                 V3 q = mid + (r * std::cos(a) + u * std::sin(a)) * radius;
