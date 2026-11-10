@@ -72,6 +72,8 @@ float dogfight_flash();
 float dogfight_dark();
 // The enemy pilots (on unless told): off, the enemy fighters stand still (the tests)
 void dogfight_set_ai(bool on);
+// (for a balance harness: the player cannot be hit; the first match's dice, 0: the usual)
+void dogfight_set_ghost(bool on, uint32_t seed = 0);
 // What has sounded since the last call (game thread, after a step): bits
 // (HIT: a shot struck something it cannot harm; DAMAGE: an enemy that takes
 // more to kill; TIE: an enemy fired; HURT: the player was hit)
