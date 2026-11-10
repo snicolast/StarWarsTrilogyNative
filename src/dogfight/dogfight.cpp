@@ -126,6 +126,10 @@ struct Sim {
     float hard = 0;        // seconds the player has been turning hard
     float push = 0;        // how hard the engines push, -1..1 (dogfight_push), and the same followed slowly (the view widens with it)
     float surge = 0;
+    float charge = 1;      // what is left for the braking turn, 0..1
+    bool drifting = false, spent = false;
+    bool shaken = false;   // this hard turn has had its try at shaking them off
+    float rested = 9;      // seconds since it was last used (the charge comes back after a moment)
     bool threat_was = false;
     float downed = 0;      // seconds left of the notice after being shot down (the flight starts again)
     uint32_t target = 0;   // the id of the ship the target lock holds (0: none)
@@ -140,7 +144,7 @@ Sim g_sim;
 std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};
 std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false}, g_shown_downed{false};
-std::atomic<float> g_shown_shield{1}, g_shown_push{0};
+std::atomic<float> g_shown_shield{1}, g_shown_push{0}, g_shown_charge{1};
 bool g_ai = true;   // for the HUD, drawn on another thread
 
 // Speeds in the game's units (an X-wing is about 11 long: metres, roughly) per second
@@ -302,9 +306,9 @@ void pilots(Sim& s, float manoeuvre, float dt) {
         foes[i].second->ai.passer = i == 1;
     }
     // A hard turn held a moment shakes off the one on the tail, if its pilot is taken in
-    const bool hard_was = s.hard >= 0.6f;
     s.hard = manoeuvre >= 0.85f ? s.hard + dt : 0;
-    const bool shake = s.hard >= 0.6f && !hard_was;
+    const bool shake = s.hard >= (s.drifting ? 0.25f : 0.6f) && !(s.shaken) ;
+    s.shaken = s.hard > 0 ? s.shaken || shake : false;
     const Vec player_vel = s.at.fwd * s.speed;
     s.warning = false;
     for (Ship& ship : s.ships) {
@@ -326,6 +330,10 @@ void pilots(Sim& s, float manoeuvre, float dt) {
             if (rnd(0, 1) < 0.9f - 0.55f * ai.skill) {   // it flies on past the turn, and has to come round again
                 ai.mode = Ship::Pilot::OVERSHOOT, ai.timer = rnd(2.5f, 3.5f), ai.way = ship.at.fwd;
                 ai.aimed = 0, ai.burst = 0;
+            } else {   // not taken in: it breaks to a side instead of flying past
+                ai.mode = Ship::Pilot::BREAK, ai.timer = rnd(1.5f, 2.5f);
+                Vec side = cross(dir, ship.at.down) * (rnd(-1, 1) < 0 ? -1.0f : 1.0f) + ship.at.down * rnd(-0.6f, 0.6f);
+                ai.way = unit(ship.at.fwd * 0.5f + side);
             }
         }
         if (ai.mode == Ship::Pilot::CHASE) {
@@ -463,11 +471,25 @@ void step(float dt) {
     if (c.absolute) s.throttle = std::clamp(c.throttle.load(), 0.0f, 1.0f);
     else s.throttle = std::clamp(s.throttle + c.throttle * 0.6f * dt, 0.0f, 1.0f);
     float target = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * s.throttle;
+    // The braking turn: held, with charge left (and not begun on an empty one)
+    // (run out, it is over until the button is let go: the charge comes back then)
+    if (!c.drift) s.spent = false;
+    s.drifting = c.drift && !s.spent && s.charge > (s.drifting ? 0.0f : 0.15f);
+    if (s.drifting) {
+        s.charge = std::max(0.0f, s.charge - dt / 2.5f);
+        s.spent = s.charge <= 0;
+        s.rested = 0;
+        target = SPEED_MIN;
+    } else {
+        s.rested += dt;
+        if (s.rested > 1 && !c.drift) s.charge = std::min(1.0f, s.charge + dt / 6.0f);
+    }
     s.push = std::clamp((target - s.speed) / (SPEED_MAX - SPEED_MIN) * 2.5f, -1.0f, 1.0f);
     s.surge += (s.push - s.surge) * std::min(1.0f, 4.0f * dt);
-    s.speed += (target - s.speed) * std::min(1.0f, 1.5f * dt);
-    // Turns best at half throttle, a third slower flat out or crawling
+    s.speed += (target - s.speed) * std::min(1.0f, (s.drifting ? 3.0f : 1.5f) * dt);
+    // Turns best at half throttle, a third slower flat out or crawling; near twice as tight in a braking turn
     float agile = 1.0f - 0.33f * std::fabs(s.throttle - 0.5f) * 2.0f;
+    if (s.drifting) agile = 1.8f;
     s.at.turn(c.pitch * TURN_RATE * agile * dt, c.yaw * TURN_RATE * agile * dt, c.roll * ROLL_RATE * dt);
     s.pos = s.pos + s.at.fwd * (s.speed * dt);
     s.time += dt;
@@ -499,7 +521,8 @@ void step(float dt) {
     s.lock_was = c.lock;
     if (c.lock_threat && !s.threat_was && s.threat) s.target = s.threat;   // the lock on the one attacking
     s.threat_was = c.lock_threat;
-    if (g_ai) pilots(s, std::clamp(std::fabs(c.pitch.load()) + std::fabs(c.yaw.load()), 0.0f, 1.0f), dt);
+    // (a braking turn counts as the hardest of manoeuvres)
+    if (g_ai) pilots(s, std::clamp((std::fabs(c.pitch.load()) + std::fabs(c.yaw.load())) * (s.drifting ? 2.0f : 1.0f), 0.0f, 1.0f), dt);
     cannons(s, c.fire, dt);
     // The shield comes back when nothing has hit for a while; with none left
     // the ship is lost and the flight starts again
@@ -516,7 +539,7 @@ void step(float dt) {
     g_shown_ships = int(s.ships.size()), g_shown_kills = s.kills;
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
     g_shown_locked = s.target != 0;
-    g_shown_push = s.push;
+    g_shown_push = s.push, g_shown_charge = s.charge;
     g_shown_shield = std::max(0.0f, s.shield), g_shown_warning = s.warning, g_shown_downed = s.downed > 0;
     float nearest = 0;
     for (const Ship& ship : s.ships) {
@@ -538,6 +561,7 @@ float dogfight_speed() { return g_shown_speed; }
 float dogfight_throttle() { return g_shown_throttle; }
 float dogfight_speed_part() { return std::clamp((g_shown_speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0.0f, 1.0f); }
 float dogfight_push() { return g_shown_push; }
+float dogfight_charge() { return g_shown_charge; }
 int dogfight_ships() { return g_shown_ships; }
 int dogfight_kills() { return g_shown_kills; }
 bool dogfight_locked() { return g_shown_locked; }

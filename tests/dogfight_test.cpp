@@ -138,6 +138,19 @@ int main() {
         fly(0, 0, 0, 0, 2);
         CHECK(dogfight_scene()->blasts.empty());
     }
+    // The braking turn: it turns tighter and slows, while its charge lasts; the charge comes back
+    {
+        Flown plain = fly(0, 1, 0, 0, 1.5f);
+        g_dogfight_controls.drift = true;
+        Flown tight = fly(0, 1, 0, 0, 1.5f);
+        CHECK(tight.fwd[2] < plain.fwd[2] - 0.2f && dogfight_speed() < 40 && dogfight_charge() < 0.5f);
+        for (int i = 0; i < 60 * 3; i++) dogfight_step(1.0f / 60);
+        CHECK(dogfight_charge() == 0);
+        g_dogfight_controls.drift = false;
+        for (int i = 0; i < 60 * 8; i++) dogfight_step(1.0f / 60);
+        CHECK(dogfight_charge() == 1);
+        g_dogfight_controls.yaw = 0;
+    }
     // The enemy pilots: flying straight, the fighters move, stay whole
     // (orthonormal, within their speeds), fire green bolts and wear the
     // shield down; the warning comes on at some time

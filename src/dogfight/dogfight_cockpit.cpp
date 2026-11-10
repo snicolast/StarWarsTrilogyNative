@@ -588,7 +588,7 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
 
     // The scope: a frame, lines running from its corners to a box at the
     // middle, and frames that come out of the middle as the ship flies on
-    const float sx0 = x, sx1 = x + wide, sy0 = 9, sy1 = 49;
+    const float sx0 = x, sx1 = x + wide, sy0 = 9, sy1 = 48;
     const float cx = (sx0 + sx1) * 0.5f, cy = (sy0 + sy1) * 0.5f, half_w = (sx1 - sx0) * 0.5f, half_h = (sy1 - sy0) * 0.5f;
     const float mid = 0.13f;   // the middle box, as a part of the frame
     d.frame(sx0, sy0, sx1, sy1, LINE, 1.2f);
@@ -643,21 +643,24 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     d.frame(cx - half_w * mid, cy - half_h * mid, cx + half_w * mid, cy + half_h * mid, locked ? YELLOW : LINE, 1.2f, 2);
 
     // Under it the range to that enemy, as the film's countdown: big yellow figures
-    d.text(x, 53, foe && foe->locked ? "LOCK" : "RANGE", foe && foe->locked ? YELLOW : LINE);
+    // Under the scope, a thin line: what is left for the braking turn
+    d.box(x, 50, x + wide, 51.2f, DIM);
+    d.box(x, 50, x + wide * dogfight_charge(), 51.2f, YELLOW, 2);
+    d.text(x, 54, foe && foe->locked ? "LOCK" : "RANGE", foe && foe->locked ? YELLOW : LINE);
     if (foe) snprintf(number, sizeof(number), "%05d", std::clamp(int(foe_range + 0.5f), 0, 99999));
     else snprintf(number, sizeof(number), "-----");
-    d.text(x + wide - 60, 53, number, YELLOW, 2);
+    d.text(x + wide - 60, 54, number, YELLOW, 2);
     // Under the word: a warning while an enemy has the ship in its sights, or the kills
     const bool blink = std::fmod(time, 0.3) < 0.18;
     if (dogfight_downed()) {
-        if (blink) d.text(x, 62, "DOWN", YELLOW);
+        if (blink) d.text(x, 63, "DOWN", YELLOW);
     } else if (dogfight_warning()) {
-        if (blink) d.text(x, 62, "WARN", YELLOW);
+        if (blink) d.text(x, 63, "WARN", YELLOW);
     } else if (dogfight_kills() > 0) {
         snprintf(number, sizeof(number), "K %d", dogfight_kills());
-        d.text(x, 62, number, YELLOW);
+        d.text(x, 63, number, YELLOW);
     }
-    d.box(x, 70, x + wide, 71, DIM);
+    d.box(x, 71, x + wide, 72, DIM);
     // The shield, and the speed: a bar that fills with what the ship has; a
     // mark stands where the throttle asks it to be, and the bar comes up to it
     float bar = d.text(x, 74, "SHD", LINE) + 5 + 24;

@@ -30,6 +30,9 @@ struct DogfightControls {
     std::atomic<bool> fire{false};       // the cannons, while held
     // Trying the game's sounds out (for now): keys 1 to 6 ask for one each; 0: none
     std::atomic<int> audition{0};
+    // The braking turn, while held: the engines cut, the ship slows fast and
+    // turns near twice as tight, while its charge lasts
+    std::atomic<bool> drift{false};
     std::atomic<bool> lock_threat{false};   // ... and this one takes the enemy that is attacking (the orange arrow's)
     std::atomic<bool> lock{false};       // the target lock: each press takes the enemy nearest the nose (the next nearest if it has that one)
 };
@@ -53,6 +56,7 @@ int dogfight_ships();
 int dogfight_kills();       // TIE fighters shot down in this flight
 bool dogfight_locked();     // whether an enemy is locked
 float dogfight_shield();    // the player's shield, 0..1
+float dogfight_charge();    // what is left for the braking turn, 0..1
 bool dogfight_warning();    // an enemy has the player in its sights
 bool dogfight_downed();     // just shot down (the flight has started again)
 // The enemy pilots (on unless told): off, the enemy fighters stand still (the tests)

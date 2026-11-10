@@ -399,12 +399,13 @@ static std::vector<AimTarget> aim_targets() {
 // and slower, a flight stick's own lever the throttle itself; the cannons on
 // the right trigger or A, a flight stick's trigger, the space bar or the mouse;
 // the target lock on Y, a flight stick's second button, T or the right mouse
-// button; the lock on the one attacking on X, the stick's third button or R
+// button; the lock on the one attacking on X, the stick's third button or R;
+// the braking turn on the left trigger, the stick's fourth button or Shift
 static void dogfight_controls(bool focused) {
     DogfightControls& c = g_dogfight_controls;
     float pitch = 0, yaw = 0, roll = 0, throttle = 0;
     bool absolute = false, any_pad = false;
-    bool fire = false, lock = false, threat = false;
+    bool fire = false, lock = false, threat = false, drift = false;
     if (focused && !g_menu_open) {
         for (int i = 0; i < Gamepads::MAX; i++) {
             const PadState& pad = g_pads.pad(i);
@@ -413,7 +414,7 @@ static void dogfight_controls(bool focused) {
             yaw += pad.fly[0], pitch += pad.fly[1], roll += pad.fly[2];   // (stick back = nose up)
             throttle += pad.fly_triggers[1] - pad.fly_triggers[0];
             if (pad.has_throttle) absolute = true, throttle = pad.fly_throttle;
-            fire |= pad.fly_fire, lock |= pad.fly_lock, threat |= pad.fly_threat;
+            fire |= pad.fly_fire, lock |= pad.fly_lock, threat |= pad.fly_threat, drift |= pad.fly_drift;
         }
         if (g_pad_settings.invert & 2) pitch = -pitch;
         auto key = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
@@ -424,6 +425,7 @@ static void dogfight_controls(bool focused) {
         fire |= key(VK_SPACE) || key(VK_LBUTTON);
         lock |= key('T') || key(VK_RBUTTON);
         threat |= key('R');
+        drift |= key(VK_SHIFT);
         static bool was[6] = {};
         for (int k = 0; k < 6; k++) {
             bool down = key('1' + k);
@@ -443,6 +445,7 @@ static void dogfight_controls(bool focused) {
     c.fire = fire;
     c.lock = lock;
     c.lock_threat = threat;
+    c.drift = drift;
     c.throttle = absolute ? throttle : std::clamp(throttle, -1.0f, 1.0f);
 }
 
