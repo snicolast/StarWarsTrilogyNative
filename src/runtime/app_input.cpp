@@ -94,7 +94,9 @@ void poll_keyboard_mouse(HWND hwnd) {
     }
     // A second mouse becomes player 2's when it clicks while player 1 plays alone
     bool join_allowed = g_opt.several_mice && !g_menu_open && g_inputs.p[0].playing && !g_inputs.p[1].playing;
-    raw_mice::confine(kAnalogJoystick && g_pointer_sight && g_p1_pad < 0);
+    // (DOGFIGHT too: a click outside the window, on another monitor, took the
+    // focus away, and with it the controls)
+    raw_mice::confine((kAnalogJoystick && g_pointer_sight && g_p1_pad < 0) || g_dogfight == 2);
     raw_mice::update(hwnd, join_allowed, !g_menu_open);
     auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
     if (g_menu_open) {
