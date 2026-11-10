@@ -601,12 +601,16 @@ void R3DSceneBuilder::native_items() {
         float side[3] = {d[1] * mid[2] - d[2] * mid[1], d[2] * mid[0] - d[0] * mid[2], d[0] * mid[1] - d[1] * mid[0]};
         float len = std::sqrt(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
         if (len < 1e-6f) side[0] = 1, side[1] = side[2] = 0, len = 1;
-        float dist = std::sqrt(mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]);
         // As the game draws its own bolts: a solid body in its colour ending
-        // in a point, and a thin yellow line along its middle
-        const float wide = std::max(beam.width, 0.0026f * dist) * 0.5f / len;
-        float neck[3];   // where the point begins
-        for (int c = 0; c < 3; c++) neck[c] = b[c] - d[c] * 0.1f;
+        // in a point, and a thin yellow line along its middle. Its tail
+        // narrows and fades out: seen from behind, as its own pilot sees
+        // it, a blunt end near the eye looked cut off
+        float waist[3], neck[3];   // where the tail ends, and where the point begins
+        for (int c = 0; c < 3; c++) waist[c] = a[c] + d[c] * 0.4f, neck[c] = a[c] + d[c] * 0.9f;
+        auto half = [&](const float* at) {
+            float far = std::sqrt(at[0] * at[0] + at[1] * at[1] + at[2] * at[2]);
+            return std::max(beam.width, 0.0026f * far) * 0.5f / len;
+        };
         auto corner = [&](const float* at, float off, uint32_t color) {
             R3DVertex q{};
             for (int c = 0; c < 3; c++) q.pos[c] = q.prev[c] = at[c] + side[c] * off;
@@ -615,15 +619,20 @@ void R3DSceneBuilder::native_items() {
             q.flags = R3D_LUMINOUS;
             return q;
         };
-        const uint32_t body = beam.color | 0xFF000000u, line = 0xFF50E6FFu;
-        const R3DVertex strip[15] = {
-            corner(a, -wide, body), corner(neck, -wide, body), corner(neck, wide, body),
-            corner(a, -wide, body), corner(neck, wide, body), corner(a, wide, body),
-            corner(neck, -wide, body), corner(b, 0, body), corner(neck, wide, body),
-            corner(a, -wide * 0.12f, line), corner(b, -wide * 0.12f, line), corner(b, wide * 0.12f, line),
-            corner(a, -wide * 0.12f, line), corner(b, wide * 0.12f, line), corner(a, wide * 0.12f, line),
+        const uint32_t rgb = beam.color & 0x00FFFFFFu, body = rgb | 0xFF000000u, yellow = 0x0050E6FFu, line = yellow | 0xFF000000u;
+        const float wa = half(a) * 0.3f, ww = half(waist), wn = half(neck), la = wa * 0.12f, lw = ww * 0.12f, lb = half(b) * 0.12f;
+        const R3DVertex strip[27] = {
+            corner(a, -wa, rgb), corner(waist, -ww, body), corner(waist, ww, body),
+            corner(a, -wa, rgb), corner(waist, ww, body), corner(a, wa, rgb),
+            corner(waist, -ww, body), corner(neck, -wn, body), corner(neck, wn, body),
+            corner(waist, -ww, body), corner(neck, wn, body), corner(waist, ww, body),
+            corner(neck, -wn, body), corner(b, 0, body), corner(neck, wn, body),
+            corner(a, -la, yellow), corner(waist, -lw, line), corner(waist, lw, line),
+            corner(a, -la, yellow), corner(waist, lw, line), corner(a, la, yellow),
+            corner(waist, -lw, line), corner(b, -lb, line), corner(b, lb, line),
+            corner(waist, -lw, line), corner(b, lb, line), corner(waist, lw, line),
         };
-        for (int k = 0; k < 15; k++) {
+        for (int k = 0; k < 27; k++) {
             trans_.push_back(strip[k]);
             // (a key of its own: the next frame finds where each corner was)
             trans_keys_.push_back(0xBEA3000000000000ull | uint64_t(beam.key) << 8 | uint64_t(k));

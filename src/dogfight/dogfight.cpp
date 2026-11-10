@@ -74,6 +74,7 @@ struct Ship {
 struct Bolt {
     Vec pos, vel;
     float life = 0;   // seconds left
+    float flown = 0;  // how far it has come from the cannon (its tail is no longer than that)
     uint32_t id = 0;
 };
 // An explosion: where, how big, and how far along it is (the renderer's
@@ -170,7 +171,7 @@ void cannons(Sim& s, bool fire, float dt) {
         Vec from = s.pos + s.at.right * tip[s.cannon][0] + s.at.down * tip[s.cannon][1] + s.at.fwd * 4.0f;
         Vec dir = unit(s.pos + s.at.fwd * CONVERGE + from * -1);
         s.cannon = (s.cannon + 1) & 3;
-        s.bolts.push_back({from, dir * BOLT_SPEED + s.at.fwd * s.speed, BOLT_LIFE, s.next_id++});
+        s.bolts.push_back({from, dir * BOLT_SPEED + s.at.fwd * s.speed, BOLT_LIFE, 0, s.next_id++});
     }
     for (Bolt& b : s.bolts) {
         Vec move = b.vel * dt;
@@ -198,6 +199,7 @@ void cannons(Sim& s, bool fire, float dt) {
             }
         }
         b.pos = b.pos + move;
+        b.flown += len;
     }
     s.bolts.erase(std::remove_if(s.bolts.begin(), s.bolts.end(), [](const Bolt& b) { return b.life <= 0; }), s.bolts.end());
 }
@@ -310,8 +312,9 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
         scene->items.push_back(it);
     }
     for (const Bolt& b : s.bolts) {
+        if (b.flown <= 0) continue;   // (fired this instant)
         R3DNativeScene::Beam beam;
-        Vec tail = b.pos + unit(b.vel) * -BOLT_LENGTH;
+        Vec tail = b.pos + unit(b.vel) * -std::min(BOLT_LENGTH, b.flown);
         beam.a[0] = tail.x, beam.a[1] = tail.y, beam.a[2] = tail.z;
         beam.b[0] = b.pos.x, beam.b[1] = b.pos.y, beam.b[2] = b.pos.z;
         beam.key = b.id;
