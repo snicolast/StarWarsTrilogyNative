@@ -1189,7 +1189,8 @@ void dogfight_begin() {
 // (twice each: the four cannons, side by side); what the enemy fighters do
 // comes on voices 12 to 22: 0A is a TIE fighter's shot, 02 and 03 are two
 // explosions (02 the louder: a kill; 03: a hit on a fighter that takes more)
-// and 08 is a shot striking something it does not harm; all heard by ear. 09, 0B and 0E gave no sound alone.
+// and 08 is a shot striking something it does not harm (and the enemy's
+// striking the player's shield); all heard by ear. 09, 0B and 0E gave no sound alone.
 // SWT_DOGFIGHT_SOUND=laser,hit,kill gives others, each as hex bytes ("" none): to try them out
 static void dogfight_sounds(int which) {
     static std::vector<uint8_t> bytes[3];
@@ -1209,7 +1210,21 @@ static void dogfight_sounds(int which) {
                 for (uint8_t b : bytes[k]) g_sound.midi_write(b);
         return;
     }
-    static unsigned shots = 0, kills = 0, hits = 0;
+    // (for now: keys 1 to 6 play commands that look like the pilots' voices, to tell which is which)
+    if (int key = g_dogfight_controls.audition.exchange(0)) {
+        static const uint8_t what[6][2] = {{0x2E, 0x17}, {0x2E, 0x21}, {0x2E, 0x2B}, {0x2E, 0x33}, {0x24, 0x10}, {0x24, 0x21}};
+        const uint8_t m[3] = {0xA0, what[key - 1][0], what[key - 1][1]};
+        for (uint8_t b : m) g_sound.midi_write(b);
+    }
+    static unsigned shots = 0, kills = 0, hits = 0, ties = 0;
+    if (which & DOGFIGHT_SOUND_TIE) {   // an enemy's shot
+        const uint8_t m[3] = {0xA0, uint8_t(0x1C + (ties++ & 3)), 0x0A};
+        for (uint8_t b : m) g_sound.midi_write(b);
+    }
+    if (which & DOGFIGHT_SOUND_HURT) {   // the player's shield struck
+        const uint8_t m[3] = {0xA0, 0x12, 0x08};
+        for (uint8_t b : m) g_sound.midi_write(b);
+    }
     if (which & DOGFIGHT_SOUND_LASER) {
         const uint8_t m[3] = {0xA0, 0x23, uint8_t(shots++ >> 1 & 1 ? 0x00 : 0x01)};
         for (uint8_t b : m) g_sound.midi_write(b);

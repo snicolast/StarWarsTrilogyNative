@@ -52,8 +52,15 @@ constexpr uint32_t GREEN = 0xFF30E040u, YELLOW = 0xFFF0E020u, DIM = 0xFF104018u,
 void dogfight_draw_hud(uint32_t* front, int w, int h) {
     if (dogfight_cockpit_on()) return;   // the cockpit's screen shows them instead
     Canvas cv{front, w, h};
-    // Bottom left: SPEED and its number, the throttle as a bar under it
-    int x = 22, y = h - 44;
+    // Bottom left: the shield, SPEED and its number, the throttle as a bar under it
+    int x = 22, y = h - 56;
+    {
+        char shield[24];
+        snprintf(shield, sizeof(shield), "%03d", int(dogfight_shield() * 100 + 0.5f));
+        cv.text(cv.text(x, y, "SHIELD", GREEN) + 6, y, shield, YELLOW);
+        if (dogfight_warning()) cv.text(x + 90, y, "WARNING", YELLOW);
+    }
+    y += 12;
     int after = cv.text(x, y, "SPEED", GREEN);
     char number[16];
     snprintf(number, sizeof(number), "%03d", std::clamp(int(dogfight_speed() + 0.5f), 0, 999));

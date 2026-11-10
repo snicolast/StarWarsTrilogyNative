@@ -470,7 +470,8 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
         h.line(level, p, thin, rgb, 0.55f);
         h.dot(level, R * 0.018f, rgb, 0.5f);
         if (c.kind != DogfightContact::CAPITAL) {
-            h.dot(p, R * 0.032f, rgb, 1.0f);
+            // (one that has the player in its sights: bigger, blinking)
+            h.dot(p, R * (c.attacking ? (std::fmod(time, 0.3) < 0.15 ? 0.055f : 0.02f) : 0.032f), rgb, 1.0f);
             if (c.locked) {   // the locked one: a yellow diamond round it, faint, blinking
                 const float s = R * (std::fmod(time, 0.5) < 0.35 ? 0.085f : 0.07f);
                 V3 e[4] = {p + X * s, p + U * s, p - X * s, p - U * s};
@@ -587,7 +588,7 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
 
     // The scope: a frame, lines running from its corners to a box at the
     // middle, and frames that come out of the middle as the ship flies on
-    const float sx0 = x, sx1 = x + wide, sy0 = 9, sy1 = 53;
+    const float sx0 = x, sx1 = x + wide, sy0 = 9, sy1 = 49;
     const float cx = (sx0 + sx1) * 0.5f, cy = (sy0 + sy1) * 0.5f, half_w = (sx1 - sx0) * 0.5f, half_h = (sy1 - sy0) * 0.5f;
     const float mid = 0.13f;   // the middle box, as a part of the frame
     d.frame(sx0, sy0, sx1, sy1, LINE, 1.2f);
@@ -642,23 +643,33 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     d.frame(cx - half_w * mid, cy - half_h * mid, cx + half_w * mid, cy + half_h * mid, locked ? YELLOW : LINE, 1.2f, 2);
 
     // Under it the range to that enemy, as the film's countdown: big yellow figures
-    d.text(x, 58, foe && foe->locked ? "LOCK" : "RANGE", foe && foe->locked ? YELLOW : LINE);
+    d.text(x, 53, foe && foe->locked ? "LOCK" : "RANGE", foe && foe->locked ? YELLOW : LINE);
     if (foe) snprintf(number, sizeof(number), "%05d", std::clamp(int(foe_range + 0.5f), 0, 99999));
     else snprintf(number, sizeof(number), "-----");
-    d.text(x + wide - 60, 58, number, YELLOW, 2);
-    if (dogfight_kills() > 0) {
+    d.text(x + wide - 60, 53, number, YELLOW, 2);
+    // Under the word: a warning while an enemy has the ship in its sights, or the kills
+    const bool blink = std::fmod(time, 0.3) < 0.18;
+    if (dogfight_downed()) {
+        if (blink) d.text(x, 62, "DOWN", YELLOW);
+    } else if (dogfight_warning()) {
+        if (blink) d.text(x, 62, "WARN", YELLOW);
+    } else if (dogfight_kills() > 0) {
         snprintf(number, sizeof(number), "K %d", dogfight_kills());
-        d.text(x, 67, number, YELLOW);
+        d.text(x, 62, number, YELLOW);
     }
-    d.box(x, 76, x + wide, 77, DIM);
-    // The speed: a bar that fills with what the ship has; a mark stands where
-    // the throttle asks it to be, and the bar comes up to it
-    snprintf(number, sizeof(number), "SPD %03d", std::clamp(int(dogfight_speed() + 0.5f), 0, 999));
-    float bar = d.text(x, 81, number, LINE) + 5;
+    d.box(x, 70, x + wide, 71, DIM);
+    // The shield, and the speed: a bar that fills with what the ship has; a
+    // mark stands where the throttle asks it to be, and the bar comes up to it
+    float bar = d.text(x, 74, "SHD", LINE) + 5 + 24;
     const float bar_w = x + wide - bar;
-    d.box(bar, 82, bar + bar_w, 87, DIM);
-    d.box(bar, 82, bar + bar_w * dogfight_speed_part(), 87, YELLOW, 2);
+    const float shield = dogfight_shield();
+    d.box(bar, 75, bar + bar_w, 80, DIM);
+    if (shield > 0.3f || blink) d.box(bar, 75, bar + bar_w * shield, 80, shield > 0.3f ? LINE : YELLOW, 2);
+    snprintf(number, sizeof(number), "SPD %03d", std::clamp(int(dogfight_speed() + 0.5f), 0, 999));
+    d.text(x, 84, number, LINE);
+    d.box(bar, 85, bar + bar_w, 90, DIM);
+    d.box(bar, 85, bar + bar_w * dogfight_speed_part(), 90, YELLOW, 2);
     const float mark = bar + (bar_w - 2) * std::clamp(dogfight_throttle(), 0.0f, 1.0f);
-    d.box(mark, 80, mark + 2, 89, LINE, 3);
+    d.box(mark, 83, mark + 2, 92, LINE, 3);
     add_radar(scene, time, contacts, level_up);
 }

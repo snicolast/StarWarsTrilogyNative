@@ -37,6 +37,7 @@ static Flown fly(float pitch, float yaw, float roll, float throttle, float secon
 static float dot(const float* a, const float* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 
 int main() {
+    dogfight_set_ai(false);   // (the enemy fighters stand still for the tests of the flight and the cannons)
     // World axes: x right, y down, z forward
     Flown straight = fly(0, 0, 0, 0, 1);
     CHECK(straight.pos[2] > 20 && std::fabs(straight.pos[0]) < 1e-3f && std::fabs(straight.pos[1] + 1) < 1e-3f);   // (the eye: 1 above the ship)
@@ -129,6 +130,38 @@ int main() {
         g_dogfight_controls.yaw = g_dogfight_controls.pitch = g_dogfight_controls.throttle = 0;
         fly(0, 0, 0, 0, 2);
         CHECK(dogfight_scene()->blasts.empty());
+    }
+    // The enemy pilots: flying straight, the fighters move, stay whole
+    // (orthonormal, within their speeds), fire green bolts and wear the
+    // shield down; the warning comes on at some time
+    {
+        dogfight_set_ai(true);
+        dogfight_reset();
+        g_dogfight_controls.pitch = g_dogfight_controls.yaw = g_dogfight_controls.roll = g_dogfight_controls.throttle = 0;
+        auto start = dogfight_scene();
+        bool green = false, warned = false, tie_sound = false;
+        float least = 1;
+        for (int i = 0; i < 60 * 60; i++) {
+            dogfight_step(1.0f / 60);
+            tie_sound |= (dogfight_take_sounds() & DOGFIGHT_SOUND_TIE) != 0;
+            warned |= dogfight_warning();
+            least = std::min(least, dogfight_shield());
+            if (i % 30) continue;
+            auto sc = dogfight_scene();
+            for (const auto& b : sc->beams) green |= b.color == 0xFF30FF28u;
+            for (const auto& it : sc->items) {
+                CHECK(std::fabs(dot(it.m, it.m) - 1) < 1e-3f && std::fabs(dot(it.m + 4, it.m + 4) - 1) < 1e-3f && std::fabs(dot(it.m + 8, it.m + 8) - 1) < 1e-3f);
+                CHECK(std::fabs(dot(it.m, it.m + 4)) < 1e-3f && std::fabs(dot(it.m, it.m + 8)) < 1e-3f && std::fabs(dot(it.m + 4, it.m + 8)) < 1e-3f);
+            }
+        }
+        auto end = dogfight_scene();
+        int moved = 0;
+        for (size_t i = 0; i < std::min(start->items.size(), end->items.size()); i++)
+            if (start->items[i].models[0] == 0xEDB841 && std::fabs(start->items[i].m[12] - end->items[i].m[12]) > 1) moved++;
+        printf("ai: least shield %.2f, moved %d, green %d, warned %d\n", least, moved, green, warned);
+        CHECK(moved >= 5 && green && warned && tie_sound && least < 1.0f);
+        dogfight_set_ai(false);
+        dogfight_reset();
     }
     // The HUD: something drawn bottom left, nothing elsewhere, all of it opaque
     {

@@ -5,8 +5,9 @@
 // models where this simulation puts them, seen by its camera), a frame every
 // 1/60 s published as the game's would be.
 //
-// So far: free flight (pitch, yaw, roll, throttle) among ships standing still,
-// the X-wing's four cannons (the TIE fighters blow up after a few hits) and a
+// So far: flight (pitch, yaw, roll, throttle) among ships, the enemy fighters
+// flown by pilots of their own that go for the player's tail and fire (a
+// shield takes the hits), the X-wing's four cannons (the TIE fighters blow up after a few hits) and a
 // target lock: a bracket round the enemy taken, or an arrow to it when it is
 // out of view (R3DNativeScene::marks).
 #pragma once
@@ -27,6 +28,8 @@ struct DogfightControls {
     std::atomic<float> throttle{0};   // + faster, - slower (a rate), unless `absolute`
     std::atomic<bool> absolute{false};   // a throttle lever: `throttle` is its position, 0..1
     std::atomic<bool> fire{false};       // the cannons, while held
+    // Trying the game's sounds out (for now): keys 1 to 6 ask for one each; 0: none
+    std::atomic<int> audition{0};
     std::atomic<bool> lock{false};       // the target lock: each press takes the enemy nearest the nose (the next nearest if it has that one)
 };
 extern DogfightControls g_dogfight_controls;
@@ -45,9 +48,15 @@ float dogfight_speed_part();
 int dogfight_ships();
 int dogfight_kills();       // TIE fighters shot down in this flight
 bool dogfight_locked();     // whether an enemy is locked
+float dogfight_shield();    // the player's shield, 0..1
+bool dogfight_warning();    // an enemy has the player in its sights
+bool dogfight_downed();     // just shot down (the flight has started again)
+// The enemy pilots (on unless told): off, the enemy fighters stand still (the tests)
+void dogfight_set_ai(bool on);
 // What has sounded since the last call (game thread, after a step): bits
-// (HIT: a shot struck something it cannot harm; DAMAGE: an enemy that takes more to kill)
-enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4, DOGFIGHT_SOUND_DAMAGE = 8 };
+// (HIT: a shot struck something it cannot harm; DAMAGE: an enemy that takes
+// more to kill; TIE: an enemy fired; HURT: the player was hit)
+enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4, DOGFIGHT_SOUND_DAMAGE = 8, DOGFIGHT_SOUND_TIE = 16, DOGFIGHT_SOUND_HURT = 32 };
 int dogfight_take_sounds();
 float dogfight_nearest();   // distance to the nearest ship (0: none)
 // Its HUD into the game's 2D front layer (w x h BGRA, alpha in the top byte;
@@ -80,6 +89,7 @@ struct DogfightContact {
     float nose[3] = {0, 0, 1};   // where it points, the same way (right, up, ahead)
     enum Kind { FRIEND, FOE, CAPITAL } kind = FOE;
     bool locked = false;         // the one the target lock holds
+    bool attacking = false;      // it has the player in its sights
 };
 // The radar: a holographic globe projected over the dashboard, left of the
 // screen, as the films' holograms are (pale blue, scan lines, a flicker, a
