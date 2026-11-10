@@ -85,11 +85,18 @@ int main() {
         g_dogfight_controls.absolute = false;
         g_dogfight_controls.fire = true;
         fly(0, 0, 0, 0, 0.5f);
+        // (the dust going by is drawn as plain streaks: not counted)
+        auto bolts = [](const R3DNativeScene& sc) {
+            int n = 0, dust = 0;
+            for (const auto& b : sc.beams) b.plain ? dust++ : n++;
+            CHECK(dust > 20);
+            return n;
+        };
         auto firing = dogfight_scene();
-        CHECK(firing->beams.size() >= 3 && firing->beams.size() <= 8);
+        CHECK(bolts(*firing) >= 3 && bolts(*firing) <= 8);
         g_dogfight_controls.fire = false;
         fly(0, 0, 0, 0, 3);
-        CHECK(dogfight_scene()->beams.empty());
+        CHECK(bolts(*dogfight_scene()) == 0);
         // The target lock: a press takes an enemy and marks it (brackets and
         // an arrow, ten lines, and the distance's 28 strokes); another press, another enemy
         CHECK(!dogfight_locked() && dogfight_scene()->marks.size() == 10 * 6);   // (the arrow to the one attacking: there, with no size)

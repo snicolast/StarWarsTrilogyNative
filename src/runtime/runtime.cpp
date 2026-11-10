@@ -1256,12 +1256,14 @@ void dogfight_run() {
         if (now - next > 0.25) next = now;   // far behind (the window dragged): no catching up
         dogfight_step(float(tick));
         dogfight_sounds(dogfight_take_sounds());
+        engine_sound_set(dogfight_speed_part(), dogfight_push());
         g_frame++;          // the vblank the 2D layers go by
         video_snapshot();   // (blanked while flying: app.cpp, compose_2d)
         dogfight_publish(next);
         next += tick;
         g_sound.run_frame(FRAME_HZ);   // the stage's music plays on
     }
+    engine_sound_off();
     printf("[dogfight] left (frame %llu)\n", (unsigned long long)g_frame);
     fflush(stdout);
 }

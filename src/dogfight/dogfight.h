@@ -46,6 +46,9 @@ float dogfight_throttle();
 // The speed between the slowest and the fastest the throttle gives, 0..1: it
 // follows the throttle with the ship's inertia
 float dogfight_speed_part();
+// How hard the engines push towards the speed the throttle asks for: -1
+// (holding back) .. 1 (full thrust), 0 when it has it
+float dogfight_push();
 int dogfight_ships();
 int dogfight_kills();       // TIE fighters shot down in this flight
 bool dogfight_locked();     // whether an enemy is locked

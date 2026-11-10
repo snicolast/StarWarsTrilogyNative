@@ -43,6 +43,8 @@ struct R3DNativeScene {
         float width = 1.6f;
         uint32_t color = 0xFF1E14FFu;   // RGBA8, R in the low byte (the red of the game's bolts)
         uint32_t key = 0;               // the same from frame to frame
+        float least = 0.0026f;          // never thinner than this times its distance (a couple of pixels)
+        bool plain = false;             // no yellow line along it (dust going by)
     };
     std::vector<Beam> beams;
     // Explosions in the world, drawn by r3d_explosions.cpp as the game's own

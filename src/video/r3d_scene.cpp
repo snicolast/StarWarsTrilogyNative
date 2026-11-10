@@ -609,7 +609,7 @@ void R3DSceneBuilder::native_items() {
         for (int c = 0; c < 3; c++) waist[c] = a[c] + d[c] * 0.4f, neck[c] = a[c] + d[c] * 0.9f;
         auto half = [&](const float* at) {
             float far = std::sqrt(at[0] * at[0] + at[1] * at[1] + at[2] * at[2]);
-            return std::max(beam.width, 0.0026f * far) * 0.5f / len;
+            return std::max(beam.width, beam.least * far) * 0.5f / len;
         };
         auto corner = [&](const float* at, float off, uint32_t color) {
             R3DVertex q{};
@@ -619,7 +619,7 @@ void R3DSceneBuilder::native_items() {
             q.flags = R3D_LUMINOUS;
             return q;
         };
-        const uint32_t rgb = beam.color & 0x00FFFFFFu, body = rgb | 0xFF000000u, yellow = 0x0050E6FFu, line = yellow | 0xFF000000u;
+        const uint32_t rgb = beam.color & 0x00FFFFFFu, body = rgb | 0xFF000000u, yellow = beam.plain ? rgb : 0x0050E6FFu, line = yellow | 0xFF000000u;
         const float wa = half(a) * 0.3f, ww = half(waist), wn = half(neck), la = wa * 0.12f, lw = ww * 0.12f, lb = half(b) * 0.12f;
         const R3DVertex strip[27] = {
             corner(a, -wa, rgb), corner(waist, -ww, body), corner(waist, ww, body),

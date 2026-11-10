@@ -124,6 +124,8 @@ struct Sim {
     uint32_t hitter = 0;   // whose bolt hit last, and when
     double hit_time = -99;
     float hard = 0;        // seconds the player has been turning hard
+    float push = 0;        // how hard the engines push, -1..1 (dogfight_push), and the same followed slowly (the view widens with it)
+    float surge = 0;
     bool threat_was = false;
     float downed = 0;      // seconds left of the notice after being shot down (the flight starts again)
     uint32_t target = 0;   // the id of the ship the target lock holds (0: none)
@@ -138,7 +140,7 @@ Sim g_sim;
 std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};
 std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false}, g_shown_downed{false};
-std::atomic<float> g_shown_shield{1};
+std::atomic<float> g_shown_shield{1}, g_shown_push{0};
 bool g_ai = true;   // for the HUD, drawn on another thread
 
 // Speeds in the game's units (an X-wing is about 11 long: metres, roughly) per second
@@ -461,6 +463,8 @@ void step(float dt) {
     if (c.absolute) s.throttle = std::clamp(c.throttle.load(), 0.0f, 1.0f);
     else s.throttle = std::clamp(s.throttle + c.throttle * 0.6f * dt, 0.0f, 1.0f);
     float target = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * s.throttle;
+    s.push = std::clamp((target - s.speed) / (SPEED_MAX - SPEED_MIN) * 2.5f, -1.0f, 1.0f);
+    s.surge += (s.push - s.surge) * std::min(1.0f, 4.0f * dt);
     s.speed += (target - s.speed) * std::min(1.0f, 1.5f * dt);
     // Turns best at half throttle, a third slower flat out or crawling
     float agile = 1.0f - 0.33f * std::fabs(s.throttle - 0.5f) * 2.0f;
@@ -512,6 +516,7 @@ void step(float dt) {
     g_shown_ships = int(s.ships.size()), g_shown_kills = s.kills;
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
     g_shown_locked = s.target != 0;
+    g_shown_push = s.push;
     g_shown_shield = std::max(0.0f, s.shield), g_shown_warning = s.warning, g_shown_downed = s.downed > 0;
     float nearest = 0;
     for (const Ship& ship : s.ships) {
@@ -532,6 +537,7 @@ void dogfight_step(float dt) { step(dt); }
 float dogfight_speed() { return g_shown_speed; }
 float dogfight_throttle() { return g_shown_throttle; }
 float dogfight_speed_part() { return std::clamp((g_shown_speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0.0f, 1.0f); }
+float dogfight_push() { return g_shown_push; }
 int dogfight_ships() { return g_shown_ships; }
 int dogfight_kills() { return g_shown_kills; }
 bool dogfight_locked() { return g_shown_locked; }
@@ -696,6 +702,8 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
         // The battle's up (the world's y points down)
         const float level_up[3] = {-s.at.right.y, s.at.down.y, -s.at.fwd.y};
         dogfight_cockpit_add(*scene, s.time, s.sway, contacts, level_up);
+        // The view opens a little while the engines push and closes while they hold back
+        if (scene->fov > 0) scene->fov += 4.0f * s.surge;
     }
     else if (eye.ship) {
         R3DNativeScene::Item it;
@@ -731,6 +739,36 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
         beam.key = b.id;
         if (b.foe) beam.color = 0xFF30FF28u;   // the green of the Empire's
         scene->beams.push_back(beam);
+    }
+    // Dust of space going by: a mote in each cell of a lattice round the ship
+    // (the same ones wherever it is seen from), each a faint streak as long
+    // as the ship's speed makes it. It tells how fast the ship goes
+    {
+        const float cell = 45;
+        const int reach = 3;
+        const int cx = int(std::floor(cam.x / cell)), cy = int(std::floor(cam.y / cell)), cz = int(std::floor(cam.z / cell));
+        const Vec trail = s.at.fwd * (s.speed * 0.035f);
+        const float glow = 0.35f + 0.65f * std::clamp((s.speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0.0f, 1.0f);
+        for (int x = cx - reach; x <= cx + reach; x++)
+            for (int y = cy - reach; y <= cy + reach; y++)
+                for (int z = cz - reach; z <= cz + reach; z++) {
+                    uint32_t h = uint32_t(x) * 73856093u ^ uint32_t(y) * 19349663u ^ uint32_t(z) * 83492791u;
+                    h ^= h >> 13, h *= 0x5BD1E995u, h ^= h >> 15;
+                    Vec p{(float(x) + float(h & 255) / 256.0f) * cell, (float(y) + float(h >> 8 & 255) / 256.0f) * cell, (float(z) + float(h >> 16 & 255) / 256.0f) * cell};
+                    Vec d = p + cam * -1;
+                    float far = std::sqrt(dot(d, d)) / (cell * float(reach));
+                    if (far >= 1 || far < 0.04f) continue;   // (fading out at the lattice's edge; none in the cockpit)
+                    R3DNativeScene::Beam beam;
+                    Vec tail = p + trail;
+                    beam.a[0] = tail.x, beam.a[1] = tail.y, beam.a[2] = tail.z;
+                    beam.b[0] = p.x, beam.b[1] = p.y, beam.b[2] = p.z;
+                    beam.width = 0.05f, beam.least = 0.0008f;
+                    beam.plain = true;
+                    uint32_t grey = uint32_t(150.0f * glow * (1 - far) * (1 - far));
+                    beam.color = 0xFF000000u | grey | grey << 8 | std::min(255u, grey + grey / 6) << 16;
+                    beam.key = 0x800000u | (h & 0x7FFFFFu);
+                    scene->beams.push_back(beam);
+                }
     }
     for (const Blast& b : s.blasts) {
         R3DNativeScene::Blast o;

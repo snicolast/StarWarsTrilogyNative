@@ -1,4 +1,5 @@
 #include "sound_board.h"
+#include "engine_sound.h"
 
 
 #include <algorithm>
@@ -204,6 +205,8 @@ void SoundBoard::run_frame(double frame_hz) {
     auto t_dsb = std::chrono::steady_clock::now();
     // The DSB2's music, on the front pair (it gets the same commands)
     if (dsb_.ready()) dsb_.run(samples, buffer_.data(), AudioStream::kInChannels, music_gain_ / 32768.0f);
+    // DOGFIGHT: the player's engines (silent, and no work, outside it)
+    engine_sound_mix(buffer_.data(), samples, AudioStream::kInChannels, gain_ * 0.03f);
     auto t_end = std::chrono::steady_clock::now();
     last_scsp_ms_ = std::chrono::duration<double, std::milli>(t_dsb - t_scsp).count();
     last_dsb_ms_ = std::chrono::duration<double, std::milli>(t_end - t_dsb).count();
