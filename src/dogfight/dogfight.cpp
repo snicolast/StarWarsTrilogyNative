@@ -128,6 +128,8 @@ struct Sim {
     float surge = 0;
     float charge = 1;      // what is left for the braking turn, 0..1
     bool drifting = false, spent = false;
+    float drifted = 0;     // seconds this braking turn has lasted
+    float kick = 0;        // seconds left of the push out of one
     bool shaken = false;   // this hard turn has had its try at shaking them off
     float rested = 9;      // seconds since it was last used (the charge comes back after a moment)
     bool threat_was = false;
@@ -479,14 +481,22 @@ void step(float dt) {
         s.charge = std::max(0.0f, s.charge - dt / 2.5f);
         s.spent = s.charge <= 0;
         s.rested = 0;
+        s.drifted += dt;
         target = SPEED_MIN;
     } else {
+        // Out of one that lasted: the engines kick the ship back up to its
+        // speed, and a little over it, for a moment
+        if (s.drifted > 0.4f) s.kick = 1.2f;
+        s.drifted = 0;
+        s.kick = std::max(0.0f, s.kick - dt);
+        if (s.kick > 0) target = std::min(target + 35, SPEED_MAX * 1.12f);
         s.rested += dt;
         if (s.rested > 1 && !c.drift) s.charge = std::min(1.0f, s.charge + dt / 6.0f);
     }
     s.push = std::clamp((target - s.speed) / (SPEED_MAX - SPEED_MIN) * 2.5f, -1.0f, 1.0f);
+    if (s.kick > 0) s.push = std::max(s.push, s.kick / 1.2f);   // (heard and seen as full thrust, fading)
     s.surge += (s.push - s.surge) * std::min(1.0f, 4.0f * dt);
-    s.speed += (target - s.speed) * std::min(1.0f, (s.drifting ? 3.0f : 1.5f) * dt);
+    s.speed += (target - s.speed) * std::min(1.0f, (s.drifting ? 3.0f : s.kick > 0 ? 4.0f : 1.5f) * dt);
     // Turns best at half throttle, a third slower flat out or crawling; near twice as tight in a braking turn
     float agile = 1.0f - 0.33f * std::fabs(s.throttle - 0.5f) * 2.0f;
     if (s.drifting) agile = 1.8f;
