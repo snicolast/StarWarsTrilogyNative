@@ -182,7 +182,7 @@ struct Sim {
 };
 Sim g_sim;
 std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};
-std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
+std::atomic<int> g_shown_ships{0}, g_shown_kills{0}, g_shown_round{1};
 std::atomic<int> g_shown_message{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false};
 std::atomic<int> g_shown_result{0}, g_shown_friends{0}, g_shown_foes{0}, g_shown_side[2];
@@ -217,7 +217,8 @@ constexpr float INTRO = 4.5f, INTRO_SPEED = 100;
 constexpr float AIM_CONE = 0.105f, AIM_SLOW = 0.19f, AIM_SLOWEST = 0.45f, AIM_RANGE = 1500;
 constexpr float DEFEAT_TIME = 7;   // seconds from the player's fall to the next match
 // ... and less from WANE_FROM seconds into the match, none WANE_FOR later: no match goes on for ever
-constexpr float WANE_FROM = 90, WANE_FOR = 90;
+// (WANE_FROM and five seconds more a fighter there was at the start)
+constexpr float WANE_FROM = 40, WANE_FOR = 90;
 constexpr float HIT = 0.25f, SHIELD_BACK = 0.125f, SHIELD_WAIT = 4;
 
 uint32_t g_seed = 0x5EED1234;
@@ -225,6 +226,14 @@ float rnd(float lo, float hi) {
     g_seed = g_seed * 1664525u + 1013904223u;
     return lo + (hi - lo) * float(g_seed >> 8) / float(1 << 24);
 }
+
+// A run is ROUNDS matches one after another, each with more fighters and
+// better enemy pilots than the one before, the last a battle; a lost match
+// sends the run back to the first. The kills and the time of the rounds won
+// so far are kept
+constexpr int ROUNDS = 3;
+int g_round = 1, g_run_kills = 0;
+float g_run_took = 0;
 
 void reset() {
     g_sim = Sim{};
@@ -236,17 +245,25 @@ void reset() {
     // The squadron beside the player, and as many TIE fighters coming at
     // them from far ahead: the two sides meet head on
     static const float place[5][3] = {{-45, 6, 20}, {45, -4, 30}, {-90, 14, -25}, {90, -10, -15}, {0, 22, -60}};
-    // (three to six X-wings, and one to three more TIE fighters than that:
-    // the enemy is always the more)
-    const int friends = 3 + int(rnd(0, 3.99f)), foes = friends + 1 + int(rnd(0, 2.99f));
+    // (drawn anew every time, the enemy always the more: three or four
+    // X-wings against one or two more in the first round; four to six
+    // against two or three more in the second; nine to eleven against two to
+    // four more in the third)
+    const int round = std::clamp(g_round, 1, ROUNDS);
+    const int friends = round == 1 ? 3 + int(rnd(0, 1.99f)) : round == 2 ? 4 + int(rnd(0, 2.99f)) : 9 + int(rnd(0, 2.99f));
+    const int foes = friends + (round == 1 ? 1 + int(rnd(0, 1.99f)) : round == 2 ? 2 + int(rnd(0, 1.99f)) : 2 + int(rnd(0, 2.99f)));
+    // (the enemy's pilots get better, and from the second round a few aces in bent-winged TIEs lead them)
+    const float worst = 0.2f + 0.07f * float(round), best = 0.6f + 0.08f * float(round);
+    const int aces = round - 1;
     g_sim.side[0] = friends, g_sim.side[1] = foes;
     for (int i = 0; i < friends - 1; i++) {
         add(XWING, {place[i % 5][0] * float(1 + i / 5), place[i % 5][1], place[i % 5][2] - 60.0f * float(i / 5)}, Frame{});
         g_sim.ships.back().ai.skill = rnd(0.35f, 0.8f);
     }
+    const float wide = 220.0f + 22.0f * float(foes);
     for (int i = 0; i < foes; i++) {
-        add(TIE, {rnd(-320, 320), rnd(-140, 140), 2600 + rnd(-250, 250)}, facing(3.14159265f, 0, rnd(-0.4f, 0.4f)));
-        g_sim.ships.back().ai.skill = rnd(0.35f, 0.8f);
+        add(i < aces ? TIE_ADVANCED : TIE, {rnd(-wide, wide), rnd(-wide * 0.45f, wide * 0.45f), 2600 + rnd(-300, 300)}, facing(3.14159265f, 0, rnd(-0.4f, 0.4f)));
+        g_sim.ships.back().ai.skill = i < aces ? rnd(0.85f, 1.0f) : rnd(worst, best);
     }
     for (Ship& ship : g_sim.ships)
         if (ship.shape->hits) ship.speed = g_ai ? 100.0f : 0.0f;
@@ -256,7 +273,8 @@ void reset() {
         g_sim.speed = INTRO_SPEED, g_sim.throttle = (INTRO_SPEED - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
         g_shown_speed = g_sim.speed, g_shown_throttle = g_sim.throttle;
     }
-    g_shown_ships = int(g_sim.ships.size()), g_shown_kills = 0;
+    g_shown_ships = int(g_sim.ships.size()), g_shown_kills = g_run_kills;
+    g_shown_round = round;
     g_shown_side[0] = friends, g_shown_side[1] = foes, g_shown_friends = friends, g_shown_foes = foes;
 }
 
@@ -760,7 +778,7 @@ void step(float dt) {
     if (s.left[0] > 1 && friends == 1 && foes > 0 && !s.over) s.message = DOGFIGHT_ALONE, s.message_left = 4.5f, s.say = 0;
     if (s.left[1] >= 0 && foes < s.left[1]) s.fell[1] = s.time;
     s.left[0] = friends, s.left[1] = foes;
-    s.regen = std::clamp(float(friends + foes - 4) / float(std::max(1, s.total - 4)), 0.0f, 1.0f) * std::clamp(1 - (s.took - WANE_FROM) / WANE_FOR, 0.0f, 1.0f);
+    s.regen = std::clamp(float(friends + foes - 4) / float(std::max(1, s.total - 4)), 0.0f, 1.0f) * std::clamp(1 - (s.took - WANE_FROM - 5.0f * float(s.total)) / WANE_FOR, 0.0f, 1.0f);
     s.unhurt += dt;
     if (s.unhurt > SHIELD_WAIT) s.shield = std::min(1.0f, s.shield + SHIELD_BACK * s.regen * dt);
     for (Ship& ship : s.ships) {
@@ -777,11 +795,16 @@ void step(float dt) {
             s.say = 0;
             s.sway[0] += 0.05f, s.sway[2] += 0.12f, s.sway[5] -= 0.03f;
         } else if (g_ai && foes == 0) {
-            s.over = DOGFIGHT_VICTORY, s.over_left = 8;
+            s.over = DOGFIGHT_VICTORY, s.over_left = g_round < ROUNDS ? 5.5f : 9.0f;
             s.say = 0, s.voice_rest = 0;
             say(s, DOGFIGHT_VOICE_CHEER, 1.0f);
         }
     } else if ((s.over_left -= dt) <= 0) {
+        // The next round, with what this one added; or, the run lost or won, the first again
+        const bool on = s.over == DOGFIGHT_VICTORY && g_round < ROUNDS;
+        g_run_kills = on ? g_run_kills + s.kills : 0;
+        g_run_took = on ? g_run_took + s.took : 0;
+        g_round = on ? g_round + 1 : 1;
         reset();
     } else if (s.over == DOGFIGHT_DEFEAT) {
         // The player's ship blows up round the eye: a few of the game's
@@ -808,14 +831,14 @@ void step(float dt) {
     }
     for (Blast& b : s.blasts) b.frame += 45.0f * dt;   // the fireball: a second
     s.blasts.erase(std::remove_if(s.blasts.begin(), s.blasts.end(), [](const Blast& b) { return b.frame > 46.0f; }), s.blasts.end());
-    g_shown_ships = int(s.ships.size()), g_shown_kills = s.kills;
+    g_shown_ships = int(s.ships.size()), g_shown_kills = g_run_kills + s.kills;
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
     g_shown_locked = s.target != 0;
     g_shown_message = s.message_left > 0 ? s.message : 0;
     g_shown_push = s.push, g_shown_charge = s.charge;
     g_shown_shield = std::max(0.0f, s.shield), g_shown_warning = s.warning;
     g_shown_intro = s.intro > 0 ? INTRO - s.intro : -1.0f;
-    g_shown_result = s.over, g_shown_friends = friends, g_shown_foes = foes, g_shown_took = s.took;
+    g_shown_result = s.over, g_shown_friends = friends, g_shown_foes = foes, g_shown_took = g_run_took + s.took;
     float target_shield = -1;
     for (const Ship& ship : s.ships)
         if (s.target && ship.id == s.target) target_shield = std::max(0.0f, ship.shield);
@@ -834,6 +857,7 @@ void step(float dt) {
 void dogfight_reset() {
     dogfight_cockpit_load("models/cockpit");
     g_seed = g_first_seed;   // (the first match always the same; the ones after it as they fall)
+    g_round = 1, g_run_kills = 0, g_run_took = 0;
     reset();
 }
 void dogfight_step(float dt) { step(dt); }
@@ -845,6 +869,8 @@ int dogfight_message() { return g_shown_message; }
 float dogfight_charge() { return g_shown_charge; }
 int dogfight_ships() { return g_shown_ships; }
 int dogfight_kills() { return g_shown_kills; }
+int dogfight_round() { return g_shown_round; }
+int dogfight_rounds() { return ROUNDS; }
 bool dogfight_locked() { return g_shown_locked; }
 float dogfight_shield() { return g_shown_shield; }
 bool dogfight_warning() { return g_shown_warning; }
@@ -988,7 +1014,7 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
     }
     // A fighter has fallen: for a moment, high on the view, the fighters left
     // on each side (the friends' in green, the enemy's in red), the figure
-    // that changed blinking. Fifteen lines, there with no size the rest of the time
+    // that changed blinking. Two figures a side: 29 lines, there with no size the rest of the time
     {
         static const uint8_t strokes[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bit 0 the top, then clockwise, bit 6 the middle
         const uint32_t GREEN = 0xFF50FF60u, WHITE = 0xFFFFFFFFu;
@@ -999,13 +1025,20 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
             const bool news = since[k] < 2.5f;
             const bool lit = shown && (!news || std::fmod(since[k], 0.3f) < 0.19f);
             const float grow = news ? 1.0f + 0.6f * std::max(0.0f, 1 - since[k] / 0.5f) : 1.0f;
-            const float cx = (k ? 1.0f : -1.0f) * high * 0.9f, h2 = high * 0.5f * grow, w2 = across * 0.5f * grow;
-            const float x0 = cx - w2, x1 = cx + w2, y1 = y + h2, y0 = y - h2;
-            const float seg[7][4] = {{x0, y1, x1, y1}, {x1, y1, x1, y}, {x1, y, x1, y0}, {x0, y0, x1, y0}, {x0, y, x0, y0}, {x0, y1, x0, y}, {x0, y, x1, y}};
-            const uint8_t figure = lit ? strokes[std::clamp(s.left[k], 0, 9)] : 0;
-            for (int j = 0; j < 7; j++) {
-                bool is = figure >> j & 1;
-                line(Vec{seg[j][0], seg[j][1], -D}, Vec{is ? seg[j][2] : seg[j][0], is ? seg[j][3] : seg[j][1], -D}, is ? D * (news ? 0.0042f : 0.003f) : 0, news && since[k] < 0.5f ? WHITE : k ? RED : GREEN);
+            const int left = std::clamp(s.left[k], 0, 99);
+            const float h2 = high * 0.5f * grow, w2 = across * 0.5f * grow;
+            for (int digit = 0; digit < 2; digit++) {   // the tens (none under ten), then the units
+                // (the friends' end at the middle's left, the enemy's begin at its right)
+                const float slot = left >= 10 ? (k ? float(digit) : float(digit) - 1.0f) : (k ? 0.0f : -0.0f);
+                const float cx = (k ? 1.0f : -1.0f) * high * 0.75f + slot * across * 1.35f * grow;
+                const float x0 = cx - w2, x1 = cx + w2, y1 = y + h2, y0 = y - h2;
+                const float seg[7][4] = {{x0, y1, x1, y1}, {x1, y1, x1, y}, {x1, y, x1, y0}, {x0, y0, x1, y0}, {x0, y, x0, y0}, {x0, y1, x0, y}, {x0, y, x1, y}};
+                const bool there = lit && (digit == 1 || left >= 10);
+                const uint8_t figure = there ? strokes[digit ? left % 10 : left / 10] : 0;
+                for (int j = 0; j < 7; j++) {
+                    bool is = figure >> j & 1;
+                    line(Vec{seg[j][0], seg[j][1], -D}, Vec{is ? seg[j][2] : seg[j][0], is ? seg[j][3] : seg[j][1], -D}, is ? D * (news ? 0.0042f : 0.003f) : 0, news && since[k] < 0.5f ? WHITE : k ? RED : GREEN);
+                }
             }
         }
         line(Vec{shown ? -high * 0.2f : 0, y, -D}, Vec{shown ? high * 0.2f : 0, y, -D}, shown ? D * 0.0022f : 0, 0xFF2090A0u);

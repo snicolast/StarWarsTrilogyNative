@@ -63,8 +63,13 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
         cv.box(0, 0, w, h, veil);
     }
     if (const int result = dogfight_result(); result == DOGFIGHT_VICTORY || dark >= 0.8f) {
-        const char* words = result == DOGFIGHT_VICTORY ? "VICTORY" : "DEFEATED";
-        cv.text((w - 6 * 4 * int(strlen(words))) / 2, h / 2 - 60, words, YELLOW, 4);
+        // (a round won that is not the last: said smaller, the run goes on)
+        char clear[24];
+        snprintf(clear, sizeof(clear), "ROUND %d CLEAR", dogfight_round());
+        const bool more = result == DOGFIGHT_VICTORY && dogfight_round() < dogfight_rounds();
+        const char* words = more ? clear : result == DOGFIGHT_VICTORY ? "VICTORY" : "DEFEATED";
+        const int size = more ? 3 : 4;
+        cv.text((w - 6 * size * int(strlen(words))) / 2, h / 2 - 60, words, YELLOW, size);
         char line[48];
         const int took = int(dogfight_took());
         snprintf(line, sizeof(line), "KILLS %d   TIME %d:%02d", dogfight_kills(), took / 60, took % 60);
@@ -84,6 +89,10 @@ void dogfight_draw_hud(uint32_t* front, int w, int h) {
         snprintf(mine, sizeof(mine), "%d", dogfight_side(false));
         snprintf(theirs, sizeof(theirs), "%d", dogfight_side(true));
         const int size = 4, wide = 6 * size * int(strlen(mine) + strlen(theirs)) + 6 * 2 * 4;
+        char round[24];
+        if (dogfight_round() >= dogfight_rounds()) snprintf(round, sizeof(round), "FINAL ROUND");
+        else snprintf(round, sizeof(round), "ROUND %d", dogfight_round());
+        cv.text((w - 6 * 2 * int(strlen(round))) / 2, 46, round, YELLOW, 2);
         int at = cv.text((w - wide) / 2, 70, mine, GREEN, size);
         at = cv.text(at + 6, 70 + 7 * (size - 2), " VS ", YELLOW, 2);
         cv.text(at + 6, 70, theirs, 0xFFFF4030u, size);

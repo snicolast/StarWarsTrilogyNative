@@ -498,7 +498,7 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
                 if (lit >> j & 1) h.line(at + seg[j][0], at + seg[j][1], stroke, rgb, alpha);
         };
         for (int k = 0; k < 2; k++) {
-            const int side = dogfight_side(k == 1), left = std::clamp(opening ? side : dogfight_left(k == 1), 0, 9);
+            const int side = dogfight_side(k == 1), left = std::clamp(opening ? side : dogfight_left(k == 1), 0, 99);
             if (left < was[k] && !opening) fell[k] = time;
             if (time < fell[k] || opening) fell[k] = -99;   // (a new flight)
             was[k] = left;
@@ -508,15 +508,37 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
             const float grow = (news ? 1.0f + 0.5f * std::max(0.0f, 1 - since / 0.6f) : 1.0f) * scale;
             const uint32_t rgb = news && lit ? WHITE : k ? RED : GREEN;
             const float apart = k ? 1.0f : -1.0f;
-            const V3 at = mix(top + V3{apart * 0.085f, 0, 0}, C + eu * (R * 1.58f) + X * (R * 0.5f * apart));
-            if (lit) figure(at, strokes[left], R * 0.42f * grow, R * 0.24f * grow, thin * (news ? 3.2f : 2.4f) * (1 + 0.8f * (scale - 1) / (big - 1)), rgb, 0.95f);
-            const float gap = R * (side > 7 ? 0.085f : 0.105f);
+            const V3 at = mix(top + V3{apart * 0.1f, 0, 0}, C + eu * (R * 1.58f) + X * (R * 0.5f * apart));
+            const float high = R * 0.42f * grow, wide = R * 0.24f * grow, stroke = thin * (news ? 3.2f : 2.4f) * (1 + 0.8f * (scale - 1) / (big - 1));
+            if (lit && left >= 10) {   // two figures, side by side
+                figure(at - bx * (wide * 0.68f), strokes[left / 10], high, wide, stroke, rgb, 0.95f);
+                figure(at + bx * (wide * 0.68f), strokes[left % 10], high, wide, stroke, rgb, 0.95f);
+            } else if (lit) {
+                figure(at, strokes[left], high, wide, stroke, rgb, 0.95f);
+            }
+            const float gap = R * std::min(0.105f, 0.92f / float(std::max(side, 1)));   // (a row no wider than its half of the globe)
             for (int i = 0; i < side && home >= 1; i++) {
                 V3 pip = C + eu * (R * 1.2f) + X * (R * 0.5f * apart + gap * (float(i) - float(side - 1) * 0.5f));
-                h.dot(pip, R * 0.03f, k ? RED : GREEN, i < left ? 0.9f : 0.16f);
+                h.dot(pip, R * (side > 9 ? 0.02f : 0.03f), k ? RED : GREEN, i < left ? 0.9f : 0.16f);
             }
         }
         if (opening && on && home < 1) {
+            // Over them the round, in letters of points of light
+            {
+                char words[24];
+                if (dogfight_round() >= dogfight_rounds()) snprintf(words, sizeof(words), "FINAL ROUND");
+                else snprintf(words, sizeof(words), "ROUND %d", dogfight_round());
+                const float cell = 0.0026f, alpha = 0.95f * (1 - home);
+                float x = -cell * (6 * float(strlen(words)) - 1) * 0.5f;
+                for (const char* p = words; *p; p++, x += 6 * cell)
+                    for (const DogfightGlyph& g : DOGFIGHT_GLYPHS) {
+                        if (g.c != *p) continue;
+                        for (int r = 0; r < 7; r++)
+                            for (int c = 0; c < 5; c++)
+                                if (g.rows[r][c] == '#') h.dot(top + V3{x + cell * float(c), 0.058f - cell * float(r), 0}, cell * 0.42f, PALE, alpha);
+                        break;
+                    }
+            }
             // VS between them, smaller: a V of two lines and an S (the figure five's strokes)
             const float high = 0.026f, wide = 0.015f, alpha = 0.9f * (1 - home);
             const V3 v = top + V3{-0.012f, 0, 0}, s5 = top + V3{0.012f, 0, 0};
@@ -718,7 +740,7 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     const int result = dogfight_result();
     if (message || result) {
         // (how the match went comes before anything said)
-        const char* words = result == DOGFIGHT_VICTORY ? "VICTORY" : result == DOGFIGHT_DEFEAT ? "DEFEATED" : message == DOGFIGHT_VOICE_THANKS ? "THAT WAS CLOSE" : message == DOGFIGHT_VOICE_CHEER ? "THATS IT" :
+        const char* words = result == DOGFIGHT_VICTORY ? (dogfight_round() < dogfight_rounds() ? "ROUND CLEAR" : "VICTORY") : result == DOGFIGHT_DEFEAT ? "DEFEATED" : message == DOGFIGHT_VOICE_THANKS ? "THAT WAS CLOSE" : message == DOGFIGHT_VOICE_CHEER ? "THATS IT" :
                             message == DOGFIGHT_VOICE_HELP ? "CANT SHAKE HIM" : message == DOGFIGHT_ALONE ? "YOU ARE ALONE" : "TAIL CLEAR";
         float width = 6 * float(strlen(words)) - 1, size = width > wide ? 1 : std::min(2.0f, std::floor(wide / width));
         d.text(x + (wide - width * size) * 0.5f, size > 1 ? 54 : 58, words, YELLOW, size);

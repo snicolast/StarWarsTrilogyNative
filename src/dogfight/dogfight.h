@@ -52,7 +52,11 @@ float dogfight_speed_part();
 // (holding back) .. 1 (full thrust), 0 when it has it
 float dogfight_push();
 int dogfight_ships();
-int dogfight_kills();       // TIE fighters shot down in this flight
+int dogfight_kills();       // TIE fighters shot down in this run
+// A run is a few rounds, each a match bigger and harder than the one before:
+// the one being flown (from 1) and how many there are
+int dogfight_round();
+int dogfight_rounds();
 bool dogfight_locked();     // whether an enemy is locked
 float dogfight_shield();    // the player's shield, 0..1
 float dogfight_charge();    // what is left for the braking turn, 0..1
