@@ -120,7 +120,7 @@ struct Sim {
     float unhurt = 99;     // seconds since the last hit
     bool warning = false;  // an enemy has the player in its sights
     uint32_t threat = 0;   // the enemy to worry about: aiming, firing, or the last to hit (0: none)
-    float threat_hold = 0; // seconds it stays the one
+    float threat_hold = 0; // seconds since it last was a danger
     uint32_t hitter = 0;   // whose bolt hit last, and when
     double hit_time = -99;
     float hard = 0;        // seconds the player has been turning hard
@@ -427,9 +427,16 @@ void pilots(Sim& s, float manoeuvre, float dt) {
             Vec d = ship.pos + s.pos * -1;
             if (danger && dot(d, d) < worst_dist) worst_dist = dot(d, d), worst = &ship;
         }
-        if (!still || s.threat_hold <= 0) {
+        // (threat_hold: seconds since it last was a danger. Another takes its
+        // place after a moment of that; with no other it stays a while, so
+        // the player can go after it)
+        bool current = false;
+        for (const Ship& ship : s.ships)
+            if (ship.id == s.threat) current = ship.ai.burst > 0 || ship.ai.aimed > 0.2f || (ship.id == s.hitter && s.time - s.hit_time < 4);
+        s.threat_hold = current ? 0 : s.threat_hold + 2 * dt;   // (it was counted down above: up by one a second)
+        if (!still || (worst && worst->id != s.threat && s.threat_hold > 1.5f) || s.threat_hold > 8) {
             s.threat = worst ? worst->id : 0;
-            s.threat_hold = worst ? 1.5f : 0;
+            s.threat_hold = 0;
         }
     }
     // More of them when few are left: from far off, any side
@@ -569,23 +576,45 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
         if (middle) *middle = p + e * (-size * 2.4f);
         if (length) *length = size;
     };
-    // The one attacking, when it is out of view: an orange arrow, farther
-    // out than the locked one's (always drawn, with no size when not shown)
+    // Corner brackets round a ship (a direction from the eye, 1 long, and how
+    // big it looks: radians); returns their half size
+    auto brackets = [&](float right, float up, float ahead, float looks, bool shown, uint32_t color) {
+        Vec v{right, up, -ahead};
+        Vec r = unit(Vec{1, 0, 0} + v * -v.x);
+        Vec u = cross(r, v) * -1;
+        if (u.y < 0) u = u * -1;
+        float half = D * std::max(looks, 0.014f);
+        float arm = shown ? half * 0.45f : 0, wide = shown ? D * 0.0018f : 0;
+        Vec c = shown ? v * D : Vec{0, 0, -D};
+        for (int k = 0; k < 4; k++) {
+            float sx = k & 1 ? 1.0f : -1.0f, sy = k & 2 ? 1.0f : -1.0f;
+            Vec corner = c + r * (sx * half) + u * (sy * half);
+            line(corner, corner + r * (-sx * arm), wide, color);
+            line(corner, corner + u * (-sy * arm), wide, color);
+        }
+        return half;
+    };
+    // The one attacking: orange brackets round it, or when it is out of view
+    // an orange arrow, farther out than the locked one's (always drawn, with
+    // no size when not shown). The locked one's own marks say it when it is both
     {
         const Ship* threat = nullptr;
         for (const Ship& o : s.ships)
             if (s.threat && o.id == s.threat) threat = &o;
-        float right = 0, up = 1;
-        bool shown = false;
+        float right = 0, up = 1, ahead = 1, looks = 0;
+        bool shown = false, framed = false;
         if (threat) {
             Vec d = threat->pos + cam * -1;
-            float ahead = dot(d, s.at.fwd);
-            right = dot(d, s.at.right), up = -dot(d, s.at.down);
-            shown = ahead <= 0 || std::fabs(right / ahead) > 0.58f || std::fabs(up / ahead) > 0.40f;
+            float dist = std::max(std::sqrt(dot(d, d)), 1e-3f);
+            ahead = dot(d, s.at.fwd) / dist, right = dot(d, s.at.right) / dist, up = -dot(d, s.at.down) / dist;
+            looks = threat->shape->radius * 1.8f / dist;
+            shown = ahead <= 0.05f || std::fabs(right / ahead) > 0.58f || std::fabs(up / ahead) > 0.40f;
+            framed = ahead > 0.05f && threat->id != s.target;
             // (blinking while it is the locked one too: the yellow arrow says the rest)
             if (shown && threat->id == s.target) shown = std::fmod(s.time, 0.4) < 0.25;
         }
         arrow(right, up, 0.27f, shown, ORANGE, nullptr, nullptr);
+        brackets(right, up, ahead, looks, framed, ORANGE);
     }
     const Ship* ship = nullptr;
     for (const Ship& o : s.ships)
@@ -600,22 +629,10 @@ static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
     const bool front = ahead > 0.05f;
     float bracket = 0;   // its half size
     {
-        Vec v{right, up, -ahead};
-        Vec r = unit(Vec{1, 0, 0} + v * -v.x);
-        Vec u = cross(r, v) * -1;
-        if (u.y < 0) u = u * -1;
-        float half = D * std::max(ship->shape->radius * 1.8f / dist, 0.014f);
-        bracket = half;
-        // on it: the nose points inside the bracket
-        bool on = front && std::sqrt(right * right + up * up) < half / D;
-        float arm = front ? half * 0.45f : 0, wide = front ? D * 0.0018f : 0;
-        Vec c = front ? v * D : Vec{0, 0, -D};
-        for (int k = 0; k < 4; k++) {
-            float sx = k & 1 ? 1.0f : -1.0f, sy = k & 2 ? 1.0f : -1.0f;
-            Vec corner = c + r * (sx * half) + u * (sy * half);
-            line(corner, corner + r * (-sx * arm), wide, on ? RED : YELLOW);
-            line(corner, corner + u * (-sy * arm), wide, on ? RED : YELLOW);
-        }
+        // on it: the nose points inside the brackets
+        float looks = std::max(ship->shape->radius * 1.8f / dist, 0.014f);
+        bool on = front && std::sqrt(right * right + up * up) < looks;
+        bracket = brackets(right, up, ahead, looks, front, on ? RED : YELLOW);
     }
     {
         const bool out = !front || std::fabs(right / ahead) > 0.58f || std::fabs(up / ahead) > 0.40f;
