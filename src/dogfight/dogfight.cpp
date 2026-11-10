@@ -86,6 +86,7 @@ struct Ship {
         uint32_t prey = 0;    // the ship it goes for (0: the player, for an enemy; none, for a friend)
         float bored = 0;      // seconds until it thinks again about which
         bool chased = false;  // someone has it in their sights
+        float harried = 0;    // ... and for how long
     } ai;
 };
 
@@ -136,6 +137,13 @@ struct Sim {
     bool drifting = false, spent = false;
     float drifted = 0;     // seconds this braking turn has lasted
     float kick = 0;        // seconds left of the push out of one
+    // The friends' voices: what is about to be said and in how long (a line
+    // follows what it is about by a moment), what was said last and for how
+    // long the screen still shows it, and the rests between lines
+    int say = 0;
+    float say_in = 0, message_left = 0, voice_rest = 0, help_rest = 10;
+    int message = 0;
+    double last_kill = -99;
     bool shaken = false;   // this hard turn has had its try at shaking them off
     float rested = 9;      // seconds since it was last used (the charge comes back after a moment)
     bool threat_was = false;
@@ -151,6 +159,7 @@ struct Sim {
 Sim g_sim;
 std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};
 std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
+std::atomic<int> g_shown_message{0};
 std::atomic<bool> g_shown_locked{false}, g_shown_warning{false}, g_shown_downed{false};
 std::atomic<float> g_shown_shield{1}, g_shown_push{0}, g_shown_charge{1};
 bool g_ai = true;   // for the HUD, drawn on another thread
@@ -201,6 +210,12 @@ void reset() {
     g_shown_ships = int(g_sim.ships.size()), g_shown_kills = 0;
 }
 
+
+// A friend's line, said `delay` seconds from now (one at a time, with a rest between)
+void say(Sim& s, int what, float delay) {
+    if (s.say || s.voice_rest > 0) return;
+    s.say = what, s.say_in = delay;
+}
 
 void blast(Sim& s, Vec pos, float radius) {
     if (s.blasts.size() >= 16) s.blasts.erase(s.blasts.begin());
@@ -274,6 +289,20 @@ void cannons(Sim& s, bool fire, float dt) {
                     if (ship.id == s.target) s.target = 0;
                     // (a friend shot down the one that was after the player)
                     if (!mine && foe(ship) && ship.id == s.threat) s.sounds |= DOGFIGHT_SOUND_SAVED;
+                    if (mine) {
+                        // It was on a friend's tail: thanks from the friend. Or
+                        // the second kill in a few seconds, or now and then: a cheer
+                        bool saved = false;
+                        for (const Ship& other : s.ships) {
+                            Vec gap = other.pos + ship.pos * -1;
+                            saved |= other.id == ship.ai.prey && friendly(other) && (ship.ai.aimed > 0 || dot(gap, gap) < 450.0f * 450.0f);
+                        }
+                        if (saved) say(s, DOGFIGHT_VOICE_THANKS, 0.8f);
+                        else if (s.time - s.last_kill < 8 || rnd(0, 1) < 0.3f) say(s, DOGFIGHT_VOICE_CHEER, 0.6f);
+                        s.last_kill = s.time;
+                    } else if (foe(ship) && ship.id == s.threat) {
+                        s.message = DOGFIGHT_SOUND_SAVED, s.message_left = 2.5f;
+                    }
                     s.ships.erase(s.ships.begin() + long(k));
                     if (mine) s.kills++;
                     if (heard) s.sounds |= DOGFIGHT_SOUND_KILL;
@@ -369,6 +398,15 @@ void pilots(Sim& s, float manoeuvre, float dt) {
     for (Ship& ship : s.ships)
         if (ship.ai.aimed > 0.3f)
             if (Ship* prey = find(ship.ai.prey)) prey->ai.chased = true;
+    // A friend that has had an enemy on it for a while calls for help
+    s.help_rest -= dt;
+    for (Ship& ship : s.ships) {
+        ship.ai.harried = ship.ai.chased ? ship.ai.harried + dt : std::max(0.0f, ship.ai.harried - 0.5f * dt);
+        if ((ship.shape == &XWING || ship.shape == &YWING) && ship.ai.harried > 2.5f && s.help_rest <= 0 && !s.say && s.voice_rest <= 0) {
+            say(s, DOGFIGHT_VOICE_HELP, 0);
+            s.help_rest = 25;
+        }
+    }
     // A hard turn held a moment shakes off the one on the tail, if its pilot is taken in
     s.hard = manoeuvre >= 0.85f ? s.hard + dt : 0;
     const bool shake = s.hard >= (s.drifting ? 0.25f : 0.6f) && !(s.shaken) ;
@@ -630,6 +668,13 @@ void step(float dt) {
     // (a braking turn counts as the hardest of manoeuvres)
     if (g_ai) pilots(s, std::clamp((std::fabs(c.pitch.load()) + std::fabs(c.yaw.load())) * (s.drifting ? 2.0f : 1.0f), 0.0f, 1.0f), dt);
     cannons(s, c.fire, dt);
+    // The friends' lines, when their moment comes
+    s.voice_rest -= dt, s.message_left -= dt;
+    if (s.say && (s.say_in -= dt) <= 0) {
+        s.sounds |= s.say;
+        s.message = s.say, s.message_left = 3;
+        s.say = 0, s.voice_rest = 5;
+    }
     // The shield comes back when nothing has hit for a while; with none left
     // the ship is lost and the flight starts again
     s.unhurt += dt;
@@ -645,6 +690,7 @@ void step(float dt) {
     g_shown_ships = int(s.ships.size()), g_shown_kills = s.kills;
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
     g_shown_locked = s.target != 0;
+    g_shown_message = s.message_left > 0 ? s.message : 0;
     g_shown_push = s.push, g_shown_charge = s.charge;
     g_shown_shield = std::max(0.0f, s.shield), g_shown_warning = s.warning, g_shown_downed = s.downed > 0;
     float nearest = 0;
@@ -667,6 +713,7 @@ float dogfight_speed() { return g_shown_speed; }
 float dogfight_throttle() { return g_shown_throttle; }
 float dogfight_speed_part() { return std::clamp((g_shown_speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0.0f, 1.0f); }
 float dogfight_push() { return g_shown_push; }
+int dogfight_message() { return g_shown_message; }
 float dogfight_charge() { return g_shown_charge; }
 int dogfight_ships() { return g_shown_ships; }
 int dogfight_kills() { return g_shown_kills; }

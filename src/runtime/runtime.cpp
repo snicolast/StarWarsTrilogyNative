@@ -1222,6 +1222,12 @@ static void dogfight_sounds(int which) {
         const uint8_t m[3] = {0xA0, uint8_t(0x1C + (ties++ & 3)), 0x0A};
         for (uint8_t b : m) g_sound.midi_write(b);
     }
+    // The friends' voices: A0 2E and which line (heard by ear: 17 "thanks, that
+    // was too close", 21 "that's it", 33 "... I can't shake him")
+    if (which & (DOGFIGHT_VOICE_THANKS | DOGFIGHT_VOICE_CHEER | DOGFIGHT_VOICE_HELP)) {
+        const uint8_t m[3] = {0xA0, 0x2E, uint8_t(which & DOGFIGHT_VOICE_THANKS ? 0x17 : which & DOGFIGHT_VOICE_CHEER ? 0x21 : 0x33)};
+        for (uint8_t b : m) g_sound.midi_write(b);
+    }
     if (which & DOGFIGHT_SOUND_HURT) {   // the player's shield struck
         const uint8_t m[3] = {0xA0, 0x12, 0x08};
         for (uint8_t b : m) g_sound.midi_write(b);

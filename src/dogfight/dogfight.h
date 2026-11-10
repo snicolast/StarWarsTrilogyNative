@@ -65,7 +65,12 @@ void dogfight_set_ai(bool on);
 // (HIT: a shot struck something it cannot harm; DAMAGE: an enemy that takes
 // more to kill; TIE: an enemy fired; HURT: the player was hit)
 // SAVED: a friend shot down the enemy that was after the player
-enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4, DOGFIGHT_SOUND_DAMAGE = 8, DOGFIGHT_SOUND_TIE = 16, DOGFIGHT_SOUND_HURT = 32, DOGFIGHT_SOUND_SAVED = 64 };
+enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4, DOGFIGHT_SOUND_DAMAGE = 8, DOGFIGHT_SOUND_TIE = 16, DOGFIGHT_SOUND_HURT = 32, DOGFIGHT_SOUND_SAVED = 64,
+       // The friends' voices (the game's own lines): thanks from one the player saved,
+       // a cheer for a good kill, a call for help from one that cannot shake an enemy off
+       DOGFIGHT_VOICE_THANKS = 128, DOGFIGHT_VOICE_CHEER = 256, DOGFIGHT_VOICE_HELP = 512 };
+// What was last said, for the screen to show a moment: 0 nothing, or one of the DOGFIGHT_VOICE_* / DOGFIGHT_SOUND_SAVED
+int dogfight_message();
 int dogfight_take_sounds();
 float dogfight_nearest();   // distance to the nearest ship (0: none)
 // Its HUD into the game's 2D front layer (w x h BGRA, alpha in the top byte;

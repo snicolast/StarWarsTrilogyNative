@@ -646,19 +646,28 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     // Under the scope, a thin line: what is left for the braking turn
     d.box(x, 50, x + wide, 51.2f, DIM);
     d.box(x, 50, x + wide * dogfight_charge(), 51.2f, YELLOW, 2);
-    d.text(x, 54, foe && foe->locked ? "LOCK" : "RANGE", foe && foe->locked ? YELLOW : LINE);
-    if (foe) snprintf(number, sizeof(number), "%05d", std::clamp(int(foe_range + 0.5f), 0, 99999));
-    else snprintf(number, sizeof(number), "-----");
-    d.text(x + wide - 60, 54, number, YELLOW, 2);
-    // Under the word: a warning while an enemy has the ship in its sights, or the kills
+    // A friend's line takes the row for a moment (the game's own words, as far as the letters go)
     const bool blink = std::fmod(time, 0.3) < 0.18;
-    if (dogfight_downed()) {
-        if (blink) d.text(x, 63, "DOWN", YELLOW);
-    } else if (dogfight_warning()) {
-        if (blink) d.text(x, 63, "WARN", YELLOW);
-    } else if (dogfight_kills() > 0) {
-        snprintf(number, sizeof(number), "K %d", dogfight_kills());
-        d.text(x, 63, number, YELLOW);
+    const int message = dogfight_message();
+    if (message) {
+        const char* words = message == DOGFIGHT_VOICE_THANKS ? "THAT WAS CLOSE" : message == DOGFIGHT_VOICE_CHEER ? "THATS IT" :
+                            message == DOGFIGHT_VOICE_HELP ? "CANT SHAKE HIM" : "TAIL CLEAR";
+        float width = 6 * float(strlen(words)) - 1, size = width > wide ? 1 : std::min(2.0f, std::floor(wide / width));
+        d.text(x + (wide - width * size) * 0.5f, size > 1 ? 54 : 58, words, YELLOW, size);
+    } else {
+        d.text(x, 54, foe && foe->locked ? "LOCK" : "RANGE", foe && foe->locked ? YELLOW : LINE);
+        if (foe) snprintf(number, sizeof(number), "%05d", std::clamp(int(foe_range + 0.5f), 0, 99999));
+        else snprintf(number, sizeof(number), "-----");
+        d.text(x + wide - 60, 54, number, YELLOW, 2);
+        // Under the word: a warning while an enemy has the ship in its sights, or the kills
+        if (dogfight_downed()) {
+            if (blink) d.text(x, 63, "DOWN", YELLOW);
+        } else if (dogfight_warning()) {
+            if (blink) d.text(x, 63, "WARN", YELLOW);
+        } else if (dogfight_kills() > 0) {
+            snprintf(number, sizeof(number), "K %d", dogfight_kills());
+            d.text(x, 63, number, YELLOW);
+        }
     }
     d.box(x, 71, x + wide, 72, DIM);
     // The shield, and the speed: a bar that fills with what the ship has; a
