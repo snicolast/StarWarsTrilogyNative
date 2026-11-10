@@ -667,7 +667,7 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
             memcpy(o.uv, q.uv, 8);
             o.color = 0xFFFFFFFFu;
             o.shade = float(q.color & 0xFF) / 255.0f - 1.0f - floor;
-            o.flags = R3D_TEXTURED | R3D_ALPHA_TEST | R3D_LUMINOUS | R3D_FIXED_SHADE;
+            o.flags = R3D_TEXTURED | R3D_ALPHA_TEST | R3D_LUMINOUS | R3D_FIXED_SHADE | R3D_NO_SHADOW;   // (they glow: bloom)
             o.replace = lamp_slot;
             verts.push_back(o);
         }
@@ -677,7 +677,7 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
         place(was, q.pos, o.prev);
         o.color = q.color;
         o.shade = -floor;   // (its colour as it is)
-        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;
+        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE | R3D_NO_SHADOW;
         verts.push_back(o);
     }
     v.opaque_count = uint32_t(verts.size()) - v.opaque_first;

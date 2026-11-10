@@ -64,7 +64,7 @@ struct AtmosphereUniform {
     float day_sky[4];     // x 1 = Hoth's procedural sky in place of its sky dome
     float day_rect[4];    // the world viewport's rectangle in the 3D image (fractions)
     float glow[R3DScene::MAX_GLOWS * 12];   // lights of glowing things (R3DScene::glows): a + radius, b + strength, colour
-    float glow_info[4];   // x: how many
+    float glow_info[4];   // x: how many; y: traced ambient occlusion of the scene's fixed things
 };
 static_assert(R3DScene::MAX_GLOWS == 8, "atmosphere.glsl's glow[] holds 8 lights (3 vec4 each)");
 
@@ -1397,6 +1397,8 @@ void R3DRenderer::update_atmosphere(const ScreenLayout& lay, uint32_t target_w, 
             o[8] = g.color[0], o[9] = g.color[1], o[10] = g.color[2], o[11] = 0;
         }
         u.glow_info[0] = float(n);
+        // Ray traced ambient occlusion inside a native scene's fixed things (DOGFIGHT's cockpit)
+        u.glow_info[1] = rt_ao_ && scene_ && scene_->casters ? std::min(ao_strength_, 1.0f) * 0.85f : 0.0f;
     }
     {   // the trench's fade into the dark (r3d_share_world), eased in and out
         float target = w && w->depth_fade > 0 ? 1.0f : 0.0f;

@@ -161,6 +161,30 @@ float fixed_shadow(vec3 n) {
     }
     return lit / float(rays);
 }
+
+// ... and how open each point of them is to the light that fills the inside:
+// short rays over the hemisphere above the surface (as ao.frag's, which only
+// sees the world); the gaps between panels and under the pipes go dark
+float fixed_open(vec3 n) {
+    const float radius = 0.12;
+    float nl = length(n);
+    vec3 N = nl > 0.0 ? n / nl : vec3(0.0, 0.0, 1.0);
+    vec3 origin = view_pos + N * 0.003;
+    vec3 T = normalize(cross(abs(N.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), N));
+    vec3 B = cross(N, T);
+    float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + atm.rt.w);
+    const int rays = 4;
+    float hidden = 0.0;
+    for (int i = 0; i < rays; i++) {
+        float u = (float(i) + 0.5) / float(rays);
+        float a = (float(i) * 0.618034 + noise) * 6.2831853;
+        float r = sqrt(u);
+        vec3 dir = normalize(T * (r * cos(a)) + B * (r * sin(a)) + N * sqrt(1.0 - u));
+        float hit = rt_trace(origin, dir, radius, RT_FIXED, false);
+        if (hit >= 0.0) hidden += (1.0 - hit / radius) * (1.0 - hit / radius);
+    }
+    return 1.0 - clamp(hidden / float(rays) * 2.0, 0.0, 1.0);
+}
 #endif
 
 vec4 fetch(ivec2 base, ivec2 size, ivec2 c, uint fmt) {
@@ -507,11 +531,15 @@ void main() {
         s = clamp(s, -1.0, 1.0);
         s = max(s, 0.0);
         if ((flags & FIXED_SHADE) == 0u && s > 0.0) s *= sun_shadow(n);
+        float around = ambient;
 #ifdef RAY_TRACING
         // (R3D_NO_SHADOW without R3D_WORLD: a native scene's fixed things)
-        if ((flags & (WORLD | NO_SHADOW | FIXED_SHADE)) == NO_SHADOW && s > 0.0 && atm.rt.x > 0.0) s *= fixed_shadow(n);
+        if ((flags & (WORLD | NO_SHADOW | FIXED_SHADE)) == NO_SHADOW) {
+            if (s > 0.0 && atm.rt.x > 0.0) s *= fixed_shadow(n);
+            if (atm.glow_info.y > 0.0) around *= mix(1.0, fixed_open(n), atm.glow_info.y);
+        }
 #endif
-        vec3 light = vec3(s * vp.sun.w + ambient);
+        vec3 light = vec3(s * vp.sun.w + around);
         // Clear outdoor scenes (SUN): a stronger, warmer sun and a softer,
         // slightly bluer ambient (light from the sky) for more contrast
         if (atm.sunlight.z > 0.0 && (flags & WORLD) != 0u) {
@@ -656,6 +684,12 @@ void main() {
     // hides the glow of what is behind it.
     float peak = max(c.r, max(c.g, c.b));
     bool glows = (flags & (LUMINOUS | WORLD)) == (LUMINOUS | WORLD);
+    // A native scene's fixed lights (the cockpit's lamps and its screen):
+    // small, so they glow from a lower brightness on
+    if ((flags & (LUMINOUS | WORLD | NO_SHADOW)) == (LUMINOUS | NO_SHADOW)) {
+        out_glow = vec4(c.rgb * smoothstep(0.3, 0.75, peak), c.a);
+        return;
+    }
     // ... and, more gently, whatever else of the world is very bright (sunlit
     // surfaces and highlights above white with HDR lighting)
     vec3 glow = glows ? c.rgb * smoothstep(0.6, 1.0, peak)

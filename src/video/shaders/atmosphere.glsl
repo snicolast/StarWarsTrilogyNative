@@ -43,7 +43,7 @@ layout(set = 0, binding = ATMOSPHERE_BINDING) uniform Atmosphere {
     vec4 day_rect;   // the world viewport's rectangle in the 3D image: x0, y0, x1, y1 (fractions)
     vec4 glow[24];   // lights of glowing things (lightsabres, laser bolts, explosions), 3 each: end a + radius, end b + strength,
                      // colour (R3DScene::MAX_GLOWS * 3: keep in step with AtmosphereUniform)
-    vec4 glow_info;  // x: how many
+    vec4 glow_info;  // y: traced ambient occlusion of a native scene's fixed things (r3d.frag fixed_open), 0 = none; x: how many
 } atm;
 
 // Spotlight lobe across the view (spec 7.1) for a view direction given as
