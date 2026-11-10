@@ -46,7 +46,7 @@ void dogfight_draw_hud(uint32_t* front, int w, int h);
 // its lamps and what its screen shows now, into a scene. Where the eye sits in it, in
 // the model's units (centimetres) and degrees:
 //   SWT_DOGFIGHT_COCKPIT=right,up,back,tilt,fov   (default 0,3,8,0,52; "off": no cockpit)
-// It is dim inside (SWT_DOGFIGHT_LIGHT=floor,sun; default 0.10,0.30), lit by
+// It is dim inside (SWT_DOGFIGHT_LIGHT=floor,sun; default 0.115,0.345), lit by
 // its own lamps, and sways with the ship (SWT_DOGFIGHT_SWAY=amount; 0: none)
 #include <string>
 #include <vector>

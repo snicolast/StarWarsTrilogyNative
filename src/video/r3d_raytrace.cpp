@@ -113,7 +113,7 @@ bool R3DRayTracer::reserve(uint32_t triangles) {
     tinfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
     tinfo.geometryCount = 1;
     tinfo.pGeometries = &tgeo;
-    uint32_t two = 2;
+    uint32_t two = 3;   // (the two levels and the fixed casters)
     VkAccelerationStructureBuildSizesInfoKHR tsizes{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
     vkGetAccelerationStructureBuildSizesKHR(dev_, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &tinfo, &two, &tsizes);
     tlas_scratch_offset_ = scratch;
@@ -144,7 +144,7 @@ bool R3DRayTracer::init(VkPresenter& vk) {
     props.pNext = &asp;
     vkGetPhysicalDeviceProperties2(vk.gpu(), &props);
     scratch_align_ = std::max<VkDeviceSize>(asp.minAccelerationStructureScratchOffsetAlignment, 1);
-    if (!create_buffer(instances_, 2 * sizeof(VkAccelerationStructureInstanceKHR),
+    if (!create_buffer(instances_, 3 * sizeof(VkAccelerationStructureInstanceKHR),
                        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, true) ||
         !reserve(0)) {
         fprintf(stderr, "[raytrace] could not create the acceleration structures\n");
@@ -172,6 +172,7 @@ void R3DRayTracer::shutdown() {
     }
     if (tlas_) vkDestroyAccelerationStructureKHR(dev_, tlas_, nullptr);
     tlas_ = VK_NULL_HANDLE;
+    drop_fixed();
     for (Buffer* b : {&positions_, &cutouts_, &tlas_buffer_, &scratch_, &instances_}) destroy_buffer(*b);
     capacity_ = 0;
     dev_ = VK_NULL_HANDLE;
@@ -250,6 +251,85 @@ void R3DRayTracer::prepare(const R3DScene& scene, const R3DViewport& world, floa
     memcpy(instances_.mapped, inst, sizeof(inst));
 }
 
+void R3DRayTracer::fixed_info(VkAccelerationStructureBuildGeometryInfoKHR& info,
+                              VkAccelerationStructureGeometryKHR& geo) const {
+    geo = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
+    geo.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+    geo.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+    auto& t = geo.geometry.triangles;
+    t.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+    t.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+    t.vertexStride = 12;
+    t.indexType = VK_INDEX_TYPE_NONE_KHR;
+    t.maxVertex = std::max(fixed_count_ * 3, 1u) - 1;
+    t.vertexData.deviceAddress = fixed_positions_.address;
+    info = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
+    info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+    info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;   // built once, traced every image
+    info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+    info.geometryCount = 1;
+    info.pGeometries = &geo;
+}
+
+void R3DRayTracer::drop_fixed() {
+    if (fixed_blas_) vkDestroyAccelerationStructureKHR(dev_, fixed_blas_, nullptr);
+    fixed_blas_ = VK_NULL_HANDLE;
+    for (Buffer* b : {&fixed_positions_, &fixed_storage_, &fixed_scratch_}) destroy_buffer(*b);
+    fixed_src_.reset();
+    fixed_count_ = 0;
+    fixed_address_ = 0;
+    fixed_build_ = fixed_on_ = false;
+}
+
+void R3DRayTracer::set_fixed(const std::shared_ptr<const std::vector<float>>& triangles, const float m[12]) {
+    fixed_on_ = false;
+    if (!dev_ || !triangles || triangles->size() < 9) return;
+    if (triangles != fixed_src_) {   // other casters: their structure anew
+        vkDeviceWaitIdle(dev_);
+        drop_fixed();
+        fixed_src_ = triangles;   // (kept even if what follows fails: not tried again every image)
+        fixed_count_ = uint32_t(triangles->size() / 9);
+        const VkDeviceSize bytes = VkDeviceSize(fixed_count_) * 36;
+        VkAccelerationStructureBuildGeometryInfoKHR info;
+        VkAccelerationStructureGeometryKHR geo;
+        VkAccelerationStructureBuildSizesInfoKHR sizes{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
+        VkAccelerationStructureCreateInfoKHR ci{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
+        ci.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        bool ok = create_buffer(fixed_positions_, bytes, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, true);
+        if (ok) {
+            memcpy(fixed_positions_.mapped, triangles->data(), size_t(bytes));
+            fixed_info(info, geo);
+            vkGetAccelerationStructureBuildSizesKHR(dev_, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &info, &fixed_count_, &sizes);
+            ok = create_buffer(fixed_storage_, sizes.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false) &&
+                 create_buffer(fixed_scratch_, sizes.buildScratchSize + scratch_align_, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, false);
+        }
+        if (ok) {
+            ci.buffer = fixed_storage_.buffer;
+            ci.size = sizes.accelerationStructureSize;
+            ok = vkCreateAccelerationStructureKHR(dev_, &ci, nullptr, &fixed_blas_) == VK_SUCCESS;
+        }
+        if (!ok) {
+            fprintf(stderr, "[raytrace] could not create the structure of the fixed casters\n");
+            drop_fixed();
+            fixed_src_ = triangles;
+            return;
+        }
+        VkAccelerationStructureDeviceAddressInfoKHR ai{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR};
+        ai.accelerationStructure = fixed_blas_;
+        fixed_address_ = vkGetAccelerationStructureDeviceAddressKHR(dev_, &ai);
+        fixed_build_ = true;
+    }
+    if (!fixed_blas_) return;
+    VkAccelerationStructureInstanceKHR inst{};
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 4; c++) inst.transform.matrix[r][c] = m[r * 4 + c];
+    inst.mask = RT_FIXED;
+    inst.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    inst.accelerationStructureReference = fixed_address_;
+    memcpy(static_cast<VkAccelerationStructureInstanceKHR*>(instances_.mapped) + 2, &inst, sizeof(inst));
+    fixed_on_ = true;
+}
+
 void R3DRayTracer::record(VkCommandBuffer cmd) {
     VkDeviceAddress scratch = (scratch_.address + scratch_align_ - 1) / scratch_align_ * scratch_align_;
     VkAccelerationStructureBuildGeometryInfoKHR infos[2];
@@ -266,6 +346,17 @@ void R3DRayTracer::record(VkCommandBuffer cmd) {
         pr[i] = ranges[i];
     }
     vkCmdBuildAccelerationStructuresKHR(cmd, 2, infos, pr);
+    if (fixed_build_ && fixed_blas_) {   // the fixed casters, once
+        VkAccelerationStructureBuildGeometryInfoKHR info;
+        VkAccelerationStructureGeometryKHR geo;
+        fixed_info(info, geo);
+        info.dstAccelerationStructure = fixed_blas_;
+        info.scratchData.deviceAddress = (fixed_scratch_.address + scratch_align_ - 1) / scratch_align_ * scratch_align_;
+        VkAccelerationStructureBuildRangeInfoKHR range{fixed_count_, 0, 0, 0};
+        const VkAccelerationStructureBuildRangeInfoKHR* one = &range;
+        vkCmdBuildAccelerationStructuresKHR(cmd, 1, &info, &one);
+        fixed_build_ = false;
+    }
 
     VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
     mb.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
@@ -285,7 +376,7 @@ void R3DRayTracer::record(VkCommandBuffer cmd) {
     tinfo.pGeometries = &tgeo;
     tinfo.dstAccelerationStructure = tlas_;
     tinfo.scratchData.deviceAddress = scratch + tlas_scratch_offset_;
-    VkAccelerationStructureBuildRangeInfoKHR trange{2, 0, 0, 0};
+    VkAccelerationStructureBuildRangeInfoKHR trange{fixed_on_ ? 3u : 2u, 0, 0, 0};
     const VkAccelerationStructureBuildRangeInfoKHR* ptr = &trange;
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &tinfo, &ptr);
 

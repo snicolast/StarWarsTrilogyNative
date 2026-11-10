@@ -137,6 +137,32 @@ float traced_shadow(vec3 n) {
 }
 #endif
 
+#ifdef RAY_TRACING
+// The sun inside a native scene's fixed things (DOGFIGHT's cockpit): how much
+// of it gets past their own casters (the canopy's frame over the dashboard).
+// Everything is within arm's reach, so the rays start a couple of millimetres
+// off the surface
+float fixed_shadow(vec3 n) {
+    float nl = length(n);
+    vec3 N = nl > 0.0 ? n / nl : vec3(0.0);
+    vec3 L = normalize(vp.sun.xyz);
+    vec3 origin = view_pos + N * 0.003 + L * 0.001;
+    vec3 X = normalize(cross(abs(L.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), L));
+    vec3 Y = cross(L, X);
+    int rays = int(atm.rt.z);
+    float turn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + atm.rt.w) * 6.2831853;
+    float lit = 0.0;
+    for (int i = 0; i < rays; i++) {
+        float r = sqrt((float(i) + 0.5) / float(rays)) * atm.rt.y;
+        float a = float(i) * 2.3999632 + turn;
+        vec3 dir = normalize(L + (X * cos(a) + Y * sin(a)) * r);
+        if (rt_trace(origin, dir, 8.0, RT_FIXED, true) < 0.0) lit += 1.0;
+        if (i == 1 && rays > 2 && (lit == 0.0 || lit == 2.0)) return lit * 0.5;
+    }
+    return lit / float(rays);
+}
+#endif
+
 vec4 fetch(ivec2 base, ivec2 size, ivec2 c, uint fmt) {
     c.x = wrap(c.x, size.x, (flags & MIRROR_U) != 0u);
     c.y = wrap(c.y, size.y, (flags & MIRROR_V) != 0u);
@@ -481,6 +507,10 @@ void main() {
         s = clamp(s, -1.0, 1.0);
         s = max(s, 0.0);
         if ((flags & FIXED_SHADE) == 0u && s > 0.0) s *= sun_shadow(n);
+#ifdef RAY_TRACING
+        // (R3D_NO_SHADOW without R3D_WORLD: a native scene's fixed things)
+        if ((flags & (WORLD | NO_SHADOW | FIXED_SHADE)) == NO_SHADOW && s > 0.0 && atm.rt.x > 0.0) s *= fixed_shadow(n);
+#endif
         vec3 light = vec3(s * vp.sun.w + ambient);
         // Clear outdoor scenes (SUN): a stronger, warmer sun and a softer,
         // slightly bluer ambient (light from the sky) for more contrast

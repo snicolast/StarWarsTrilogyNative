@@ -51,6 +51,10 @@ struct R3DNativeScene {
     };
     std::shared_ptr<const std::vector<Mesh>> fixed;   // lit by the set's sun; the same object while it does not change
     std::vector<Vertex> lights;                       // glowing, untextured, over them (the cockpit's screen)
+    // What stands between the sun and `fixed`, in its space: three corners a
+    // triangle, three floats each (all of the cockpit, seen or not). With ray
+    // tracing its shadows fall on `fixed`; the same object while it does not change
+    std::shared_ptr<const std::vector<float>> casters;
     // Its lamps: glowing triangles with an image of their own (drawn where its
     // alpha is solid), their colour a brightness (they blink)
     std::vector<Vertex> lamps;
@@ -68,6 +72,11 @@ struct R3DNativeScene {
     float fixed_m[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
     float fixed_light[2] = {0.35f, 0.75f};   // the light on `fixed`: a floor, and how much the sun adds
     float fov = 0;   // vertical field of view in degrees (0: the set's)
+    float sun = 0.9f;        // how strong the set's sun is on `items` (Yavin's fleet in the game: 0.9)
+    // > 0: the exposure takes the picture's average brightness to be this
+    // instead of measuring it (a dark cockpit over half the picture opened it,
+    // and the ships outside went white)
+    float exposure_average = 0;
 };
 
 struct R3DFrameState {

@@ -1483,6 +1483,10 @@ void R3DRenderer::record_uploads(const Frame& f) {
 void R3DRenderer::record_ray_tracing(const Frame& f) {
     if (!rt_frame_ || !rt_world_) return;
     rt_.prepare(*scene_, *rt_world_, interp_, shadow_up_, shadow_height_, 35.0f, rt_ao_);
+    // A native scene's own casters (DOGFIGHT's cockpit): where they stand in this image
+    float fixed_m[12];
+    for (int i = 0; i < 12; i++) fixed_m[i] = scene_->casters_was[i] + (scene_->casters_m[i] - scene_->casters_was[i]) * interp_;
+    rt_.set_fixed(scene_->casters, fixed_m);
     if (rt_.generation() != rt_generation_) {
         rt_generation_ = rt_.generation();
         VkDescriptorBufferInfo cut{rt_.cutouts(), 0, VK_WHOLE_SIZE};
@@ -2079,6 +2083,7 @@ void R3DRenderer::record_exposure(const Frame& f, const ComposePush& pc) {
         vkCmdSetScissor(cmd, 0, 1, &eb);
         ComposePush ep = pc;
         ep.sky[3] = 2;   // measure mode
+        ep.sky[1] = scene_ ? scene_->exposure_average : 0.0f;
         vkCmdPushConstants(cmd, compose_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ep), &ep);
         vkCmdDraw(cmd, 3, 1, 0, 0);
         vkCmdEndRendering(cmd);

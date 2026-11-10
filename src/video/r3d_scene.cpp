@@ -96,6 +96,8 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     out.vertices.clear();
     out.viewports.clear();
     out.glows.clear();
+    out.casters.reset();
+    out.exposure_average = native_ ? native_->exposure_average : 0;
     out.frame = state.frame;
     out.polygons = 0;
     visited_viewports_.clear();
@@ -535,7 +537,10 @@ void R3DSceneBuilder::viewport(uint32_t addr, int depth) {
         bool own = native_ || !view_models_.empty();   // the PC's own scene in place of the game's (the stars stay)
         bool first_full = !view_drawn_ && v.priority < 3 && v.w >= 495 && v.h >= 380;
         if (!own || v.priority == 0) node_ptr(vp(0x02), base, Attribs{}, 0);
-        else if (first_full && native_) native_items();
+        else if (first_full && native_) {
+            native_items();
+            v.sun_intensity *= native_->sun;
+        }
         else if (first_full) view_models(v);
         v.build_index = uint32_t(viewport_instances_.size());
         viewport_instances_.push_back(std::move(instances_));
@@ -599,10 +604,15 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
     v.x = scene->x, v.y = scene->y, v.w = scene->w, v.h = scene->h;
     v.node = scene->node;
     v.build_index = UINT32_MAX;   // (no models of the game's in it)
-    // Its light is worked out here (R3D_FIXED_SHADE): the set's sun on each
-    // vertex over a floor, so the side away from the sun is not black
-    v.sun_intensity = 1;
-    v.ambient = 0;
+    // Lit by the set's sun over a floor, so the side away from the sun is not
+    // black. R3D_NO_SHADOW without R3D_WORLD: with ray tracing the sun's
+    // shadows on them are those of the scene's casters (r3d.frag)
+    const float* sun = scene->sun;
+    float sun_len = std::sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
+    for (int i = 0; i < 3; i++) v.sun[i] = sun_len > 0 ? sun[i] / sun_len : 0;
+    const float floor = native_->fixed_light[0];
+    v.sun_intensity = sun_len > 0 ? native_->fixed_light[1] : 0;
+    v.ambient = floor;
 
     // They stand where the scene says now, and stood where it said in the
     // frame before (the display goes from one to the other)
@@ -626,15 +636,12 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
                     R3DVertex o{};
                     memcpy(o.uv, q.uv, 8);
                     o.color = q.color;
-                    o.flags = R3D_FIXED_SHADE | (slot ? R3D_TEXTURED : 0);
+                    o.flags = R3D_NO_SHADOW | (slot ? R3D_TEXTURED : 0);
                     o.replace = slot;
                     fixed_.push_back(o);
                 }
             }
     }
-    const float* sun = scene->sun;
-    float sun_len = std::sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
-    const float floor = native_->fixed_light[0], lit = sun_len > 0 ? native_->fixed_light[1] / sun_len : 0;
     if (fixed_src_) {
         size_t i = 0;
         for (const R3DNativeScene::Mesh& mesh : *fixed_src_)
@@ -643,7 +650,6 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
                 place(m, q.pos, o.pos);
                 place(was, q.pos, o.prev);
                 turn(m, q.nrm, o.nrm);
-                o.shade = floor + lit * std::max(0.0f, o.nrm[0] * sun[0] + o.nrm[1] * sun[1] + o.nrm[2] * sun[2]);
             }
     }
 
@@ -651,7 +657,7 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
     v.opaque_first = uint32_t(verts.size());
     verts.insert(verts.end(), fixed_.begin(), fixed_.end());
     // The lamps: their image where its alpha is solid, glowing, as bright as
-    // their colour says (R3D_FIXED_SHADE on a luminous polygon: 1 + shade)
+    // their colour says (R3D_FIXED_SHADE on a luminous polygon: 1 + shade + the viewport's ambient)
     uint32_t lamp_slot = !native_->lamps.empty() && !native_->lamp_texture.empty() && pack_ ? pack_->add_file(native_->lamp_texture) : 0;
     if (lamp_slot)
         for (const R3DNativeScene::Vertex& q : native_->lamps) {
@@ -660,7 +666,7 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
             place(was, q.pos, o.prev);
             memcpy(o.uv, q.uv, 8);
             o.color = 0xFFFFFFFFu;
-            o.shade = float(q.color & 0xFF) / 255.0f - 1.0f;
+            o.shade = float(q.color & 0xFF) / 255.0f - 1.0f - floor;
             o.flags = R3D_TEXTURED | R3D_ALPHA_TEST | R3D_LUMINOUS | R3D_FIXED_SHADE;
             o.replace = lamp_slot;
             verts.push_back(o);
@@ -670,7 +676,8 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
         place(m, q.pos, o.pos);
         place(was, q.pos, o.prev);
         o.color = q.color;
-        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;   // (with shade 0 and no ambient: its colour as it is)
+        o.shade = -floor;   // (its colour as it is)
+        o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;
         verts.push_back(o);
     }
     v.opaque_count = uint32_t(verts.size()) - v.opaque_first;
@@ -687,6 +694,11 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
         o.radius = g.radius;
         o.strength = g.strength;
         out.glows.push_back(o);
+    }
+    if (native_->casters && !native_->casters->empty() && fixed_src_) {
+        out.casters = native_->casters;
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 4; c++) out.casters_m[r * 4 + c] = m[c * 4 + r], out.casters_was[r * 4 + c] = was[c * 4 + r];
     }
     memcpy(fixed_m_, m, sizeof(fixed_m_));
     fixed_frame_ = out.frame;

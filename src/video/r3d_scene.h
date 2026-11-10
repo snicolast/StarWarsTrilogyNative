@@ -49,7 +49,8 @@ enum : uint32_t {
     R3D_EXPLOSION = 1 << 17,   // Star Wars Trilogy, EXPLOSIONS: ENHANCED: drawn by r3d.frag's explosion() (r3d_explosions.cpp)
     R3D_ACTOR = 1 << 18,
     R3D_HUD_LOWER = 1 << 21,   // with R3D_HUD_RIGHT: also 24 rows lower (Star Wars Trilogy's shield gauge)
-    R3D_NO_SHADOW = 1 << 20,   // receives no sun shadows (the planets and the Death Star: the ships before them are not near)
+    R3D_NO_SHADOW = 1 << 20,   // receives no sun shadows (the planets and the Death Star: the ships before them are not near);
+                               // without R3D_WORLD: a native scene's fixed things, shadowed by their own casters (R3DScene::casters)
     R3D_DEATH_STAR = 1 << 19,  // Star Wars Trilogy: the Death Star's surface (a lit and a dark side, lights at night)       // a model of the world turned its own way: dinosaurs, people, vehicles (rim light)
     R3D_SAND = 1 << 22,        // Star Wars Trilogy: the desert of the duel with Boba Fett (grain and ripples)
     R3D_VADER = 1 << 23,       // Star Wars Trilogy: Vader in his duel (gloss on the black of the suit and helmet)
@@ -120,6 +121,13 @@ struct R3DScene {
     };
     static constexpr int MAX_GLOWS = 8;
     std::vector<Glow> glows;
+    // A native scene's shadow casters (R3DNativeScene::casters) and where
+    // they stand in the view space of the last viewport, now and in the frame
+    // before: rows of a 3x4 matrix. The ray tracer keeps them in a structure
+    // of their own, built once
+    std::shared_ptr<const std::vector<float>> casters;
+    float casters_m[12] = {}, casters_was[12] = {};
+    float exposure_average = 0;   // R3DNativeScene::exposure_average
 };
 
 class R3DSceneBuilder {

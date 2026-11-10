@@ -48,6 +48,7 @@ struct Lamp {
 struct Cockpit {
     bool on = false;
     std::shared_ptr<const std::vector<R3DNativeScene::Mesh>> meshes;
+    std::shared_ptr<const std::vector<float>> casters;   // every triangle of it, three corners each (the sun's shadows inside)
     Panel panel;
     float fov = 52;
     std::string lamp_texture;
@@ -215,6 +216,7 @@ bool dogfight_cockpit_load(const char* dir) {
     auto turn = [&](V3 q) { return V3{q.x, dot(q, view_up), -dot(q, view_fwd)}; };   // to the view's axes: x right, y up, -z ahead
 
     auto meshes = std::make_shared<std::vector<R3DNativeScene::Mesh>>();
+    auto casters = std::make_shared<std::vector<float>>();
     size_t triangles = 0;
     for (uint32_t g = 0; ok && g < groups; g++) {
         char name[33] = {}, texture[65] = {};
@@ -259,6 +261,12 @@ bool dogfight_cockpit_load(const char* dir) {
         for (uint32_t i = 0; i + 2 < count; i += 3) {
             V3 p[3];
             for (int k = 0; k < 3; k++) p[k] = at(&raw[(i + k) * 8]) - eye;
+            // All of it stands between the sun and the inside, seen or not
+            if (!glow)
+                for (int k = 0; k < 3; k++) {
+                    V3 q = turn(p[k]) * SCALE;
+                    casters->insert(casters->end(), {q.x, q.y, q.z});
+                }
             // The eye never moves in it: what faces away from it, or lies
             // all behind it, is never seen
             if (dot(cross(p[1] - p[0], p[2] - p[0]), p[0]) >= 0) continue;
@@ -307,6 +315,7 @@ bool dogfight_cockpit_load(const char* dir) {
     }
     find_lamps();
     g_cockpit.meshes = meshes;
+    g_cockpit.casters = casters;
     g_cockpit.fov = std::clamp(fov, 20.0f, 120.0f);
     g_cockpit.on = true;
     printf("[dogfight] cockpit: %zu triangles in view%s, %zu lamps (eye %g,%g,%g tilt %g, field of view %g)\n", triangles,
@@ -317,11 +326,15 @@ bool dogfight_cockpit_load(const char* dir) {
 void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway) {
     if (!g_cockpit.on) return;
     scene.fixed = g_cockpit.meshes;
+    scene.casters = g_cockpit.casters;
+    // The exposure as for a typical scene: measured, the dark inside opened
+    // it as far as it goes and the ships outside went white
+    scene.exposure_average = 0.17f;
     scene.fov = g_cockpit.fov;
     // A dim inside: little of the sun gets in, the lamps and the screen light it
     // (SWT_DOGFIGHT_LIGHT=floor,sun: the light in the dark and what the sun adds, 0..1)
     static const struct Light {
-        float floor = 0.10f, sun = 0.30f;
+        float floor = 0.115f, sun = 0.345f;
         Light() {
             if (const char* e = getenv("SWT_DOGFIGHT_LIGHT")) sscanf(e, "%f,%f", &floor, &sun);
         }

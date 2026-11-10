@@ -8,12 +8,15 @@
 // thousand triangles: a fraction of a millisecond). Two bottom levels, two
 // instances: what stands near the ground (instance mask RT_LOW, the only
 // shadow casters, as with the shadow map) and what is higher up (RT_HIGH:
-// canopies and roofs, which the ambient occlusion also sees). Each has two
+// canopies and roofs, which the ambient occlusion also sees). A third
+// instance (RT_FIXED) holds a native scene's own casters, built once
+// (set_fixed). Each of the first two has two
 // geometries: solid triangles, which stop a ray at once, and cut-out ones
 // (alpha-tested foliage, texture alpha), whose texture the shader reads to
 // decide whether a ray passes through.
 #pragma once
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "r3d_scene.h"
@@ -31,7 +34,7 @@ public:
         float alpha;        // vertex alpha
     };
     static_assert(sizeof(Cutout) == 40, "layout is shared with raytrace.glsl");
-    enum : uint32_t { RT_LOW = 1, RT_HIGH = 2 };   // instance masks (raytrace.glsl)
+    enum : uint32_t { RT_LOW = 1, RT_HIGH = 2, RT_FIXED = 4 };   // instance masks (raytrace.glsl)
 
     // false: the device has no ray queries (VkPresenter::ray_query)
     bool init(VkPresenter& vk);
@@ -45,6 +48,12 @@ public:
     // rest goes into the high one, otherwise it is left out
     void prepare(const R3DScene& scene, const R3DViewport& world, float interp, const float up[3],
                  float camera_height, float max_height, bool high);
+    // A native scene's own shadow casters (R3DScene::casters: DOGFIGHT's
+    // cockpit), a third instance (RT_FIXED) placed by `m` (rows of a 3x4
+    // matrix) for this image. They do not change, so their bottom level is
+    // built once, when `triangles` is another object than the last time, and
+    // only moved afterwards. null: none in this image. Call it before record
+    void set_fixed(const std::shared_ptr<const std::vector<float>>& triangles, const float m[12]);
     // Builds the structures; afterwards fragment shaders can trace through them
     void record(VkCommandBuffer cmd);
 
@@ -55,7 +64,7 @@ public:
     size_t triangles() const {
         size_t n = 0;
         for (const Level& l : levels_) n += l.solid + l.cut;
-        return n;
+        return n + (fixed_on_ ? fixed_count_ : 0);
     }
 
 private:
@@ -93,4 +102,14 @@ private:
     Level levels_[2];
     VkAccelerationStructureKHR tlas_ = VK_NULL_HANDLE;
     uint32_t generation_ = 0;
+    // The fixed casters: positions, structure and scratch of their own
+    std::shared_ptr<const std::vector<float>> fixed_src_;
+    Buffer fixed_positions_, fixed_storage_, fixed_scratch_;
+    VkAccelerationStructureKHR fixed_blas_ = VK_NULL_HANDLE;
+    VkDeviceAddress fixed_address_ = 0;
+    uint32_t fixed_count_ = 0;   // triangles
+    bool fixed_build_ = false;   // still to be built (record)
+    bool fixed_on_ = false;      // in this image
+    void fixed_info(VkAccelerationStructureBuildGeometryInfoKHR& info, VkAccelerationStructureGeometryKHR& geo) const;
+    void drop_fixed();
 };

@@ -511,6 +511,11 @@ float exposure() {
 
 void main() {
     if (pc.sky.w > 1.5 && pc.sky.w < 2.5) {   // measure mode (one pixel): log-average brightness of the 3D image
+        // (sky.y > 0: taken to be this instead, R3DScene::exposure_average)
+        if (pc.sky.y > 0.0) {
+            color = vec4(log(pc.sky.y));
+            return;
+        }
         float sum = 0.0, n = 0.0;
         for (int y = 0; y < 16; y++)
             for (int x = 0; x < 16; x++) {

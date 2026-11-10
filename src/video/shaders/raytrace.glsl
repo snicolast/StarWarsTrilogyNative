@@ -4,7 +4,9 @@
 // 6 and 7 these are) and declares texture_ram and replacements in it.
 #include "r3d_texture.glsl"
 
-const uint RT_LOW = 1u, RT_HIGH = 2u;   // R3DRayTracer instance masks: casters near the ground, what is higher up
+// R3DRayTracer instance masks: casters near the ground, what is higher up, and a
+// native scene's own casters (DOGFIGHT's cockpit: solid triangles only, in the last viewport's view space)
+const uint RT_LOW = 1u, RT_HIGH = 2u, RT_FIXED = 4u;
 
 layout(set = RT_SET, binding = 6) uniform accelerationStructureEXT world_rays;
 struct Cutout {
