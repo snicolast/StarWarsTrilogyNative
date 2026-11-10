@@ -129,6 +129,7 @@ struct ExplosionSlot {
     int age = 0;          // frames since key-on
     float pan = 0;        // -1 left .. 1 right
     float low = 0;        // one-pole low-pass state, for the low boost
+    bool loud = false;    // DOGFIGHT's kill: as a near one, and louder still
 };
 ExplosionSlot g_expl[2][32];
 // +12 dB on the direct level, and half the TL (the game's distance
@@ -452,6 +453,7 @@ void Scsp::start_slot(int s) {
     ExplosionSlot& ex = g_expl[master_ ? 0 : 1][s];
     ex = ExplosionSlot{};
     ex.on = explosion_sound_enabled() && explosion_sound_is_sample(ram_, ram_mask_, sl.base);
+    ex.loud = ex.on && explosion_sound_take_loud();
     if (sndlog()) {
         int chip = master_ ? 0 : 1;
         log_voice_end(chip, s, common_[C_MVOL]);
@@ -734,6 +736,7 @@ void Scsp::render(float& left, float& right) {
             ex.low += kExplosionLowK * (float(sample) - ex.low);
             float x = float(sample) + kExplosionLowGain * ex.low;
             int etl = tl / 2, edl = std::min(disdl + kExplosionDisdl, 7);
+            if (ex.loud) etl = std::min(etl, 4), edl = std::min(edl + 1, 7);   // (TL 8 is the game's nearest)
             float gl, gr;
             if (ex.placed && ex.pan <= 1) {
                 float g = float(t.pan4l[etl][0][edl]) * (1.0f / 4096.0f);

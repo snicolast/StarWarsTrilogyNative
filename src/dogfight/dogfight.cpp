@@ -213,6 +213,7 @@ constexpr float BOLT_SPEED = 1400, BOLT_LIFE = 1.6f, BOLT_LENGTH = 42, RELOAD = 
 constexpr float TIE_MIN = 50, TIE_MAX = 150, TIE_TURN = 1.25f, TIE_BOLT = 900, TIE_RELOAD = 0.16f;
 constexpr int ATTACKERS = 2;
 constexpr float FIGHTER_BALL = 9.5f;
+constexpr float KILL_BLAST = 23.35f;
 // Last man standing: a few X-wings (the player one of them) against more TIE
 // fighters, how many of each drawn anew for every match (reset()), all
 // with the same shield: a hit's worth of it (four bring a ship down), a
@@ -416,7 +417,12 @@ void cannons(Sim& s, bool fire, float dt) {
                 const bool harmed = ship.shape->hits && (!mine || foe(ship));
                 if (harmed) ship.shield -= HIT, ship.unhurt = 0;
                 if (harmed && ship.shield <= 0.001f) {
-                    blast(s, ship.pos, ship.shape->radius * 2.2f);
+                    // The game's own size for a fighter's explosion in Yavin
+                    // (23.35), and bigger the farther it is: the game's fights
+                    // are a stone's throw away, these are not, and it must be seen
+                    blast(s, ship.pos, KILL_BLAST * std::clamp(std::sqrt(dot(away, away)) / 300.0f, 1.0f, 2.5f));
+                    // (a near one shakes the cockpit)
+                    if (dot(away, away) < 350.0f * 350.0f) s.sway[0] += rnd(-0.02f, 0.02f), s.sway[2] += rnd(-0.05f, 0.05f), s.sway[5] -= 0.012f;
                     if (ship.id == s.target) s.target = 0;
                     // (a friend shot down the one that was after the player)
                     if (!mine && foe(ship) && ship.id == s.threat) s.sounds |= DOGFIGHT_SOUND_SAVED;
@@ -894,7 +900,7 @@ void step(float dt) {
         // explosions one after another, just ahead, that go with the ship
         const float since = DEFEAT_TIME - s.over_left;
         while (s.bursts < 5 && since >= 0.28f * float(s.bursts)) {
-            blast(s, s.pos, s.bursts == 0 ? 11.0f : rnd(6.0f, 10.0f));
+            blast(s, s.pos, s.bursts == 0 ? 14.0f : rnd(8.0f, 12.0f));
             s.blasts.back().riding = true;
             s.blasts.back().ride = s.bursts == 0 ? Vec{0, 0, 13} : Vec{rnd(-5, 5), rnd(-3.5f, 3.5f), rnd(8, 15)};
             s.sounds |= DOGFIGHT_SOUND_KILL;

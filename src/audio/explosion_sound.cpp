@@ -16,6 +16,8 @@ struct Event {
 std::atomic<bool> g_on{false};
 std::mutex g_mutex;
 std::deque<Event> g_events;
+std::atomic<int64_t> g_loud_until{0};   // steady clock, ms (0: none asked for)
+int64_t now_ms() { return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count(); }
 
 void drop_old(Clock::time_point now) {
     while (!g_events.empty() && now - g_events.front().t > MAX_AGE) g_events.pop_front();
@@ -46,6 +48,9 @@ bool explosion_sound_take(float& pan) {
     g_events.pop_front();
     return true;
 }
+
+void explosion_sound_loud() { g_loud_until = now_ms() + 300; }
+bool explosion_sound_take_loud() { return g_loud_until.exchange(0) > now_ms(); }
 
 bool explosion_sound_is_sample(const uint8_t* ram, uint32_t mask, uint32_t base) {
     // FNV-1a of the first 256 bytes (LW_SNDLOG's hash column): the three

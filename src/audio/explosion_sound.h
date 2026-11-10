@@ -15,5 +15,10 @@ bool explosion_sound_enabled();
 void explosion_sound_event(float pan);
 // Sound board thread: the oldest event of the last 0.3 s not yet taken
 bool explosion_sound_take(float& pan);
+// DOGFIGHT: a fighter has just blown up, and its explosion (the next to
+// begin within a moment) is to be heard as a near one whatever level the
+// game's sound program gives it. Any thread; taken by the sound board's
+void explosion_sound_loud();
+bool explosion_sound_take_loud();
 // Whether the sample at `base` (key-on) is one of the explosion sounds
 bool explosion_sound_is_sample(const uint8_t* ram, uint32_t mask, uint32_t base);

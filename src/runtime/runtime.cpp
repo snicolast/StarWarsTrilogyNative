@@ -31,6 +31,7 @@
 #include "../video/tilegen.h"
 #include "../audio/audio_out.h"
 #include "../audio/engine_sound.h"
+#include "../audio/explosion_sound.h"
 #include "../audio/sound_board.h"
 #include "../video/r3d_state.h"
 #include "stats.h"
@@ -1237,6 +1238,7 @@ static void dogfight_sounds(int which) {
     if (which & DOGFIGHT_SOUND_KILL) {
         const uint8_t m[3] = {0xA0, uint8_t(0x14 + (kills & 3)), 0x02};
         kills++;
+        explosion_sound_loud();   // (heard as a near one, however far: every fall counts)
         for (uint8_t b : m) g_sound.midi_write(b);
     } else if (which & (DOGFIGHT_SOUND_HIT | DOGFIGHT_SOUND_DAMAGE)) {
         const uint8_t m[3] = {0xA0, uint8_t(0x18 + (hits++ & 3)), uint8_t(which & DOGFIGHT_SOUND_DAMAGE ? 0x03 : 0x08)};
