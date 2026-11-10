@@ -79,6 +79,30 @@ struct Display {
         Vertex a = corner(x0, y0), b = corner(x1, y0), c = corner(x1, y1), d = corner(x0, y1);
         for (const Vertex& v : {a, b, c, a, c, d}) out.push_back(v);
     }
+    // A line `width` pixels thick
+    void line(float x0, float y0, float x1, float y1, uint32_t color, float width = 1, float lift = 1) {
+        float dx = x1 - x0, dy = y1 - y0, l = std::sqrt(dx * dx + dy * dy);
+        if (l < 1e-4f) return;
+        float nx = -dy / l * width * 0.5f, ny = dx / l * width * 0.5f;
+        V3 base = p.top_left + p.out * (lift * 0.02f * std::sqrt(dot(p.down, p.down)));
+        auto corner = [&](float x, float y) {
+            V3 q = base + p.right * (x / w) + p.down * (y / h);
+            Vertex v;
+            v.pos[0] = q.x, v.pos[1] = q.y, v.pos[2] = q.z;
+            v.color = color;
+            return v;
+        };
+        Vertex a = corner(x0 + nx, y0 + ny), b = corner(x1 + nx, y1 + ny), c = corner(x1 - nx, y1 - ny), d = corner(x0 - nx, y0 - ny);
+        for (const Vertex& v : {a, b, c, a, c, d}) out.push_back(v);
+    }
+    // The outline of a rectangle
+    void frame(float x0, float y0, float x1, float y1, uint32_t color, float width = 1, float lift = 1) {
+        const float e = width * 0.5f;
+        line(x0 - e, y0, x1 + e, y0, color, width, lift);
+        line(x0 - e, y1, x1 + e, y1, color, width, lift);
+        line(x0, y0, x0, y1, color, width, lift);
+        line(x1, y0, x1, y1, color, width, lift);
+    }
     // Letters `size` pixels to the dot; returns the x after the text
     float text(float x, float y, const char* s, uint32_t color, float size = 1) {
         for (const char* c = s; *c; c++, x += 6 * size) {
@@ -100,7 +124,9 @@ struct Display {
 };
 
 // RGBA8, R in the low byte
-constexpr uint32_t GROUND = 0xFF0A1C06u, GREEN = 0xFF50F040u, YELLOW = 0xFF30E0F0u, DIM = 0xFF184810u;
+// The screen is drawn as the films' targeting computer: orange-red lines on
+// black, yellow figures
+constexpr uint32_t GROUND = 0xFF03050Eu, LINE = 0xFF1848FFu, YELLOW = 0xFF30E0F0u, DIM = 0xFF081C68u;
 
 // The lamps of the "Glow" group: its triangles joined where they share a
 // corner. The biggest light what is around them
@@ -537,12 +563,12 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
         scene.glows = g_cockpit.glows;
     }
     if (!g_cockpit.panel.found) return;
-    {   // the screen's own light on the dashboard, green
+    {   // the screen's own light on the dashboard, orange
         const Panel& p = g_cockpit.panel;
         V3 c = p.top_left + p.right * 0.5f + p.down * 0.5f + p.out * 0.05f;
         R3DNativeScene::Glow g;
         g.pos[0] = c.x, g.pos[1] = c.y, g.pos[2] = c.z;
-        g.color[0] = 0.25f, g.color[1] = 1.0f, g.color[2] = 0.3f;
+        g.color[0] = 1.0f, g.color[1] = 0.42f, g.color[2] = 0.12f;
         g.radius = 0.12f;
         g.strength = 0.35f;
         scene.glows.push_back(g);
@@ -553,27 +579,77 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     d.box(0, 0, d.w, d.h, GROUND, 0);
     const float x = 12, wide = d.w - 2 * x;
     char number[32];
-    if (dogfight_kills() > 0) {
-        snprintf(number, sizeof(number), "KILLS %d", dogfight_kills());
-        d.text(x, 9, number, YELLOW);
-    } else {
-        d.text(x, 9, "FREE FLIGHT", GREEN);
+
+    // The scope: a frame, lines running from its corners to a box at the
+    // middle, and frames that come out of the middle as the ship flies on
+    const float sx0 = x, sx1 = x + wide, sy0 = 9, sy1 = 53;
+    const float cx = (sx0 + sx1) * 0.5f, cy = (sy0 + sy1) * 0.5f, half_w = (sx1 - sx0) * 0.5f, half_h = (sy1 - sy0) * 0.5f;
+    const float mid = 0.13f;   // the middle box, as a part of the frame
+    d.frame(sx0, sy0, sx1, sy1, LINE, 1.2f);
+    for (int k = 0; k < 4; k++) {
+        float qx = k & 1 ? 1.0f : -1.0f, qy = k & 2 ? 1.0f : -1.0f;
+        d.line(cx + qx * half_w, cy + qy * half_h, cx + qx * half_w * mid, cy + qy * half_h * mid, DIM, 1);
     }
-    d.box(x, 19, x + wide, 20, DIM);
-    d.text(x, 26, "SPEED", GREEN);
-    snprintf(number, sizeof(number), "%03d", std::clamp(int(dogfight_speed() + 0.5f), 0, 999));
-    d.text(x + 40, 23, number, YELLOW, 2);
-    d.text(x, 45, "THR", GREEN);
-    const float bar = x + 24, bar_w = wide - 24;
-    d.box(bar, 45, bar + bar_w, 52, DIM);
-    // The bar fills with the speed the ship has; a mark stands where the
-    // throttle asks it to be, and the bar comes up to it
-    d.box(bar, 45, bar + bar_w * dogfight_speed_part(), 52, YELLOW, 2);
+    static double travel = 0, travel_time = 0;   // how far the frames have run
+    travel += std::clamp(time - travel_time, 0.0, 0.1) * (0.15 + 0.85 * dogfight_speed_part());
+    travel_time = time;
+    for (int k = 0; k < 3; k++) {
+        double f = travel * 0.9 + k / 3.0;
+        float part = float(f - std::floor(f));
+        float s = mid + (1 - mid) * part * part;   // slow at the middle, fast at the rim: depth
+        d.frame(cx - half_w * s, cy - half_h * s, cx + half_w * s, cy + half_h * s, part < 0.25f ? DIM : LINE, 1);
+    }
+    d.line(cx, sy0, cx, cy - half_h * mid, DIM, 1);
+    d.line(cx, cy + half_h * mid, cx, sy1, DIM, 1);
+
+    // The nearest enemy fighter on it: where it is from the nose (40 degrees
+    // to the frame's side). At the rim and dim when it is farther round
+    const DogfightContact* foe = nullptr;
+    float foe_range = 0;
+    for (const DogfightContact& c : contacts) {
+        if (c.kind != DogfightContact::FOE) continue;
+        float range = std::sqrt(c.right * c.right + c.up * c.up + c.ahead * c.ahead);
+        if (!foe || range < foe_range) foe = &c, foe_range = range;
+    }
+    bool locked = false;
+    if (foe) {
+        const float span = 40 * 3.14159265f / 180;
+        float ax = std::atan2(foe->right, foe->ahead) / span;
+        float ay = std::atan2(foe->up, std::sqrt(foe->right * foe->right + foe->ahead * foe->ahead)) / span;
+        bool on = std::fabs(ax) <= 1 && std::fabs(ay) <= 1;
+        float big = std::max(std::fabs(ax), std::fabs(ay));
+        if (!on) ax /= big, ay /= big;
+        float mx = cx + ax * (half_w - 3), my = cy - ay * (half_h - 3);
+        locked = on && big < mid;
+        bool blink = std::fmod(time, 0.25) < 0.125;
+        uint32_t color = on ? YELLOW : DIM;
+        if (on) {
+            // two bars that close on it from the sides, as the film's do
+            d.line(mx - 5, sy0 + 1, mx - 5, sy1 - 1, locked && blink ? YELLOW : LINE, 1, 2);
+            d.line(mx + 5, sy0 + 1, mx + 5, sy1 - 1, locked && blink ? YELLOW : LINE, 1, 2);
+        }
+        d.box(mx - 2, my - 2, mx + 2, my + 2, color, 3);
+    }
+    d.frame(cx - half_w * mid, cy - half_h * mid, cx + half_w * mid, cy + half_h * mid, locked ? YELLOW : LINE, 1.2f, 2);
+
+    // Under it the range to that enemy, as the film's countdown: big yellow figures
+    d.text(x, 58, "RANGE", LINE);
+    if (foe) snprintf(number, sizeof(number), "%05d", std::clamp(int(foe_range + 0.5f), 0, 99999));
+    else snprintf(number, sizeof(number), "-----");
+    d.text(x + wide - 60, 58, number, YELLOW, 2);
+    if (dogfight_kills() > 0) {
+        snprintf(number, sizeof(number), "K %d", dogfight_kills());
+        d.text(x, 67, number, YELLOW);
+    }
+    d.box(x, 76, x + wide, 77, DIM);
+    // The speed: a bar that fills with what the ship has; a mark stands where
+    // the throttle asks it to be, and the bar comes up to it
+    snprintf(number, sizeof(number), "SPD %03d", std::clamp(int(dogfight_speed() + 0.5f), 0, 999));
+    float bar = d.text(x, 81, number, LINE) + 5;
+    const float bar_w = x + wide - bar;
+    d.box(bar, 82, bar + bar_w, 87, DIM);
+    d.box(bar, 82, bar + bar_w * dogfight_speed_part(), 87, YELLOW, 2);
     const float mark = bar + (bar_w - 2) * std::clamp(dogfight_throttle(), 0.0f, 1.0f);
-    d.box(mark, 43, mark + 2, 54, GREEN, 3);
-    snprintf(number, sizeof(number), "CONTACTS %d", dogfight_ships());
-    d.text(x, 62, number, GREEN);
-    snprintf(number, sizeof(number), "NEAREST %d", std::clamp(int(dogfight_nearest() + 0.5f), 0, 99999));
-    d.text(x, 74, number, GREEN);
+    d.box(mark, 80, mark + 2, 89, LINE, 3);
     add_radar(scene, time, contacts, level_up);
 }
