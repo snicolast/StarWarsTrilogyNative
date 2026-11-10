@@ -46,7 +46,8 @@ int dogfight_ships();
 int dogfight_kills();       // TIE fighters shot down in this flight
 bool dogfight_locked();     // whether an enemy is locked
 // What has sounded since the last call (game thread, after a step): bits
-enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4 };
+// (HIT: a shot struck something it cannot harm; DAMAGE: an enemy that takes more to kill)
+enum { DOGFIGHT_SOUND_LASER = 1, DOGFIGHT_SOUND_HIT = 2, DOGFIGHT_SOUND_KILL = 4, DOGFIGHT_SOUND_DAMAGE = 8 };
 int dogfight_take_sounds();
 float dogfight_nearest();   // distance to the nearest ship (0: none)
 // Its HUD into the game's 2D front layer (w x h BGRA, alpha in the top byte;

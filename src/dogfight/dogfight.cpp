@@ -201,7 +201,7 @@ void cannons(Sim& s, bool fire, float dt) {
                     s.sounds |= DOGFIGHT_SOUND_KILL;
                 } else {
                     blast(s, p + unit(b.vel) * -1.5f, ship.shape == &DESTROYER ? 6.0f : 2.5f);
-                    s.sounds |= DOGFIGHT_SOUND_HIT;
+                    s.sounds |= ship.shape->hits ? DOGFIGHT_SOUND_DAMAGE : DOGFIGHT_SOUND_HIT;
                 }
                 break;
             }
