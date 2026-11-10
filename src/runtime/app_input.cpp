@@ -395,9 +395,9 @@ static std::vector<AimTarget> aim_targets() {
 
 // DOGFIGHT's controls: left stick (or a flight stick, the arrow keys, or the
 // mouse away from the middle of the window when there is no pad) pitch and
-// yaw, right stick's x (the twist, A / D) roll, the triggers (W / S) faster
+// yaw, right stick's x (the twist, A / D) roll, the shoulder buttons (W / S) faster
 // and slower, a flight stick's own lever the throttle itself; the cannons on
-// the right shoulder or A, a flight stick's trigger, the space bar or the mouse;
+// the right trigger or A, a flight stick's trigger, the space bar or the mouse;
 // the target lock on Y, a flight stick's second button, T or the right mouse button
 static void dogfight_controls(bool focused) {
     DogfightControls& c = g_dogfight_controls;

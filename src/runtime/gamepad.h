@@ -56,9 +56,9 @@ struct PadState {
     double last_used = -1e9;            // seconds (poll clock) of its last input
     // Flying (DOGFIGHT): the sticks as they are held, -1..1 with their dead
     // zone (left x, y, right x, y; a flight stick: its x, y and twist), the
-    // triggers 0..1, and a flight stick's throttle lever 0..1 (has_throttle)
+    // the engines (shoulder buttons: slower, faster) 0 or 1, and a flight stick's throttle lever 0..1 (has_throttle)
     float fly[4] = {}, fly_triggers[2] = {}, fly_throttle = 0;
-    bool fly_fire = false;   // DOGFIGHT's cannons: right shoulder or A (the triggers are its throttle); a flight stick's trigger
+    bool fly_fire = false;   // DOGFIGHT's cannons: right trigger or A (the shoulder buttons are its throttle); a flight stick's trigger
     bool fly_lock = false;   // DOGFIGHT's target lock: Y; a flight stick's second button
     bool has_throttle = false;
 };

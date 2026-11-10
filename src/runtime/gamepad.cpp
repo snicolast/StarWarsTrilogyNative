@@ -271,9 +271,10 @@ void Gamepads::poll(const GamepadSettings& set, bool focused, bool menu) {
             stick(p, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, rx, ry, rtilt);
             bool live = focused && !menu;
             st.fly[0] = live ? lx : 0, st.fly[1] = live ? ly : 0, st.fly[2] = live ? rx : 0, st.fly[3] = live ? ry : 0;
-            st.fly_triggers[0] = live ? float(SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER)) / 32767.0f : 0;
-            st.fly_triggers[1] = live ? float(SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)) / 32767.0f : 0;
-            st.fly_fire = live && (now_down[SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER] || now_down[SDL_GAMEPAD_BUTTON_SOUTH]);
+            // The engines on the shoulder buttons (left slower, right faster), the cannons on the right trigger or A
+            st.fly_triggers[0] = live && now_down[SDL_GAMEPAD_BUTTON_LEFT_SHOULDER] ? 1.0f : 0.0f;
+            st.fly_triggers[1] = live && now_down[SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER] ? 1.0f : 0.0f;
+            st.fly_fire = live && (SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 8000 || now_down[SDL_GAMEPAD_BUTTON_SOUTH]);
             st.fly_lock = live && now_down[SDL_GAMEPAD_BUTTON_NORTH];
         }
         stick(p, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, ax, ay, tilt);
