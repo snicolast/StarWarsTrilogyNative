@@ -235,6 +235,7 @@ void cannons(Sim& s, bool fire, float dt) {
                 s.shield -= HIT;
                 s.unhurt = 0;
                 s.hitter = b.owner, s.hit_time = s.time;
+                s.threat = b.owner, s.threat_hold = 0;   // whoever hits is the one to worry about, at once
                 s.sounds |= DOGFIGHT_SOUND_HURT;
                 // (the cockpit is thrown about)
                 s.sway[0] += rnd(-0.02f, 0.02f), s.sway[2] += rnd(-0.05f, 0.05f), s.sway[5] -= 0.012f;
