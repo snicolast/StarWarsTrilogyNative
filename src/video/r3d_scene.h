@@ -263,6 +263,7 @@ private:
     std::shared_ptr<const std::vector<R3DNativeScene::Mesh>> fixed_src_;   // native_fixed: the meshes fixed_ was made from
     std::vector<R3DVertex> fixed_;                                         // ... as vertices, kept from frame to frame
     float fixed_m_[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};   // where they stood in the previous frame
+    std::vector<R3DNativeScene::Vertex> marks_was_;                        // the marks of that frame
     uint64_t fixed_frame_ = 0;                                             // ... and which frame that was
     bool hud_edges_ = true;
     bool share_world_ = false;

@@ -661,7 +661,7 @@ void R3DSceneBuilder::native_items() {
 // world's ambient occlusion and atmosphere leave them alone). They do not
 // move on the screen, so they need no pairing with the previous frame.
 void R3DSceneBuilder::native_fixed(R3DScene& out) {
-    if ((!native_->fixed || native_->fixed->empty()) && native_->lights.empty() && native_->holo.empty()) return;
+    if ((!native_->fixed || native_->fixed->empty()) && native_->lights.empty() && native_->holo.empty() && native_->marks.empty()) return;
     const R3DViewport* scene = nullptr;
     for (const R3DViewport& v : out.viewports)
         if (v.node == native_viewport_) scene = &v;
@@ -747,6 +747,22 @@ void R3DSceneBuilder::native_fixed(R3DScene& out) {
         o.shade = -floor;   // (its colour as it is)
         o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;
         verts.push_back(o);
+    }
+    // The marks: where the scene says, with no sway; from where they were in
+    // the frame before when they are the same ones
+    {
+        const bool same = follows && marks_was_.size() == native_->marks.size();
+        for (size_t i = 0; i < native_->marks.size(); i++) {
+            const R3DNativeScene::Vertex& q = native_->marks[i];
+            R3DVertex o{};
+            memcpy(o.pos, q.pos, 12);
+            memcpy(o.prev, same ? marks_was_[i].pos : q.pos, 12);
+            o.color = q.color;
+            o.shade = -floor;
+            o.flags = R3D_LUMINOUS | R3D_FIXED_SHADE;
+            verts.push_back(o);
+        }
+        marks_was_ = native_->marks;
     }
     v.opaque_count = uint32_t(verts.size()) - v.opaque_first;
     v.trans_first = uint32_t(verts.size());

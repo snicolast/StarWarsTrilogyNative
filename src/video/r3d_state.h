@@ -68,6 +68,10 @@ struct R3DNativeScene {
     };
     std::shared_ptr<const std::vector<Mesh>> fixed;   // lit by the set's sun; the same object while it does not change
     std::vector<Vertex> lights;                       // glowing, untextured, over them (the cockpit's screen)
+    // Marks on the view itself (a target's bracket, an arrow to it): glowing
+    // untextured triangles in view space that do not sway with the rest. The
+    // same number in the same order from frame to frame while they follow something
+    std::vector<Vertex> marks;
     // What stands between the sun and `fixed`, in its space: three corners a
     // triangle, three floats each (all of the cockpit, seen or not). With ray
     // tracing its shadows fall on `fixed`; the same object while it does not change

@@ -471,6 +471,11 @@ void add_radar(R3DNativeScene& scene, double time, const std::vector<DogfightCon
         h.dot(level, R * 0.018f, rgb, 0.5f);
         if (c.kind != DogfightContact::CAPITAL) {
             h.dot(p, R * 0.032f, rgb, 1.0f);
+            if (c.locked) {   // the locked one: a white diamond round it, blinking
+                const float s = R * (std::fmod(time, 0.5) < 0.35 ? 0.085f : 0.07f);
+                V3 e[4] = {p + X * s, p + U * s, p - X * s, p - U * s};
+                for (int k = 0; k < 4; k++) h.line(e[k], e[(k + 1) & 3], thin * 1.5f, WHITE, 1.0f);
+            }
             continue;
         }
         // A capital ship: its wedge, pointing where it heads
@@ -602,13 +607,17 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     d.line(cx, sy0, cx, cy - half_h * mid, DIM, 1);
     d.line(cx, cy + half_h * mid, cx, sy1, DIM, 1);
 
-    // The nearest enemy fighter on it: where it is from the nose (40 degrees
+    // The locked enemy fighter on it, or the nearest when none is: where it is from the nose (40 degrees
     // to the frame's side). At the rim and dim when it is farther round
     const DogfightContact* foe = nullptr;
     float foe_range = 0;
     for (const DogfightContact& c : contacts) {
         if (c.kind != DogfightContact::FOE) continue;
         float range = std::sqrt(c.right * c.right + c.up * c.up + c.ahead * c.ahead);
+        if (c.locked) {   // the locked one before any nearer
+            foe = &c, foe_range = range;
+            break;
+        }
         if (!foe || range < foe_range) foe = &c, foe_range = range;
     }
     bool locked = false;
@@ -633,7 +642,7 @@ void dogfight_cockpit_add(R3DNativeScene& scene, double time, const float* sway,
     d.frame(cx - half_w * mid, cy - half_h * mid, cx + half_w * mid, cy + half_h * mid, locked ? YELLOW : LINE, 1.2f, 2);
 
     // Under it the range to that enemy, as the film's countdown: big yellow figures
-    d.text(x, 58, "RANGE", LINE);
+    d.text(x, 58, foe && foe->locked ? "LOCK" : "RANGE", foe && foe->locked ? YELLOW : LINE);
     if (foe) snprintf(number, sizeof(number), "%05d", std::clamp(int(foe_range + 0.5f), 0, 99999));
     else snprintf(number, sizeof(number), "-----");
     d.text(x + wide - 60, 58, number, YELLOW, 2);

@@ -97,6 +97,8 @@ struct Sim {
     float reload = 0;   // seconds until the next bolt
     int cannon = 0;     // the one to fire next, of four
     int kills = 0;
+    uint32_t target = 0;   // the id of the ship the target lock holds (0: none)
+    bool lock_was = false;
     double time = 0;
     // The cockpit round the pilot: it leads the turns a little and is left
     // behind by a push of the engines, then settles (dogfight_cockpit_add's
@@ -105,7 +107,8 @@ struct Sim {
 };
 Sim g_sim;
 std::atomic<float> g_shown_speed{0}, g_shown_throttle{0}, g_shown_nearest{0};
-std::atomic<int> g_shown_ships{0}, g_shown_kills{0};   // for the HUD, drawn on another thread
+std::atomic<int> g_shown_ships{0}, g_shown_kills{0};
+std::atomic<bool> g_shown_locked{false};   // for the HUD, drawn on another thread
 
 // Speeds in the game's units (an X-wing is about 11 long: metres, roughly) per second
 constexpr float SPEED_MIN = 20, SPEED_MAX = 160;
@@ -190,6 +193,7 @@ void cannons(Sim& s, bool fire, float dt) {
                 b.life = 0;
                 if (ship.shape->hits && ++ship.hits >= ship.shape->hits) {
                     blast(s, ship.pos, ship.shape->radius * 2.2f);
+                    if (ship.id == s.target) s.target = 0;
                     s.ships.erase(s.ships.begin() + long(k));
                     s.kills++;
                 } else {
@@ -202,6 +206,20 @@ void cannons(Sim& s, bool fire, float dt) {
         b.flown += len;
     }
     s.bolts.erase(std::remove_if(s.bolts.begin(), s.bolts.end(), [](const Bolt& b) { return b.life <= 0; }), s.bolts.end());
+}
+
+bool foe(const Ship& ship) { return ship.shape == &TIE || ship.shape == &TIE_ADVANCED; }
+
+// The target lock: the enemy nearest the nose; pressed again, the next nearest
+void lock(Sim& s) {
+    const Ship* best = nullptr;
+    float best_cos = -2;
+    for (const Ship& ship : s.ships) {
+        if (!foe(ship) || ship.id == s.target) continue;
+        float c = dot(unit(ship.pos + s.pos * -1), s.at.fwd);
+        if (c > best_cos) best_cos = c, best = &ship;
+    }
+    if (best) s.target = best->id;
 }
 
 void step(float dt) {
@@ -240,11 +258,14 @@ void step(float dt) {
             s.sway[i] += speed_of[i] * dt;
         }
     }
+    if (c.lock && !s.lock_was) lock(s);
+    s.lock_was = c.lock;
     cannons(s, c.fire, dt);
     for (Blast& b : s.blasts) b.frame += 45.0f * dt;   // the fireball: a second
     s.blasts.erase(std::remove_if(s.blasts.begin(), s.blasts.end(), [](const Blast& b) { return b.frame > 46.0f; }), s.blasts.end());
     g_shown_ships = int(s.ships.size()), g_shown_kills = s.kills;
     g_shown_speed = s.speed, g_shown_throttle = s.throttle;
+    g_shown_locked = s.target != 0;
     float nearest = 0;
     for (const Ship& ship : s.ships) {
         Vec d = ship.pos + s.pos * -1;
@@ -266,7 +287,67 @@ float dogfight_throttle() { return g_shown_throttle; }
 float dogfight_speed_part() { return std::clamp((g_shown_speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0.0f, 1.0f); }
 int dogfight_ships() { return g_shown_ships; }
 int dogfight_kills() { return g_shown_kills; }
+bool dogfight_locked() { return g_shown_locked; }
 float dogfight_nearest() { return g_shown_nearest; }
+
+// The locked enemy on the view: corner brackets round it, and an arrow
+// towards it near the middle when it is out of a 4:3 view or behind. Drawn
+// a hand's width from the eye (view space: x right, y up, -z ahead), over
+// the cockpit, as a sight on the pilot's visor would be
+static void target_marks(R3DNativeScene& scene, const Sim& s, Vec cam) {
+    const Ship* ship = nullptr;
+    for (const Ship& o : s.ships)
+        if (o.id == s.target) ship = &o;
+    if (!s.target || !ship) return;
+    Vec d = ship->pos + cam * -1;
+    float dist = std::sqrt(dot(d, d));
+    if (dist < 1e-3f) return;
+    const float right = dot(d, s.at.right) / dist, up = -dot(d, s.at.down) / dist, ahead = dot(d, s.at.fwd) / dist;
+    const float D = 0.2f;
+    const uint32_t YELLOW = 0xFF30E0F0u, RED = 0xFF2840FFu;
+    // A line between two points of view space, `wide` across, flat to the eye
+    auto line = [&](Vec a, Vec b, float wide, uint32_t color) {
+        Vec side = unit(cross(b + a * -1, a + b)) * (wide * 0.5f);
+        const Vec q[6] = {a + side, b + side, b + side * -1, a + side, b + side * -1, a + side * -1};
+        for (const Vec& p : q) {
+            R3DNativeScene::Vertex v;
+            v.pos[0] = p.x, v.pos[1] = p.y, v.pos[2] = p.z;
+            v.color = color;
+            scene.marks.push_back(v);
+        }
+    };
+    // Always the same number of triangles (the display goes from one frame's
+    // to the next's): what is not shown is drawn with no size
+    const bool front = ahead > 0.05f;
+    {
+        Vec v{right, up, -ahead};
+        Vec r = unit(Vec{1, 0, 0} + v * -v.x);
+        Vec u = cross(r, v) * -1;
+        if (u.y < 0) u = u * -1;
+        float half = D * std::max(ship->shape->radius * 1.8f / dist, 0.014f);
+        // on it: the nose points inside the bracket
+        bool on = front && std::sqrt(right * right + up * up) < half / D;
+        float arm = front ? half * 0.45f : 0, wide = front ? D * 0.0018f : 0;
+        Vec c = front ? v * D : Vec{0, 0, -D};
+        for (int k = 0; k < 4; k++) {
+            float sx = k & 1 ? 1.0f : -1.0f, sy = k & 2 ? 1.0f : -1.0f;
+            Vec corner = c + r * (sx * half) + u * (sy * half);
+            line(corner, corner + r * (-sx * arm), wide, on ? RED : YELLOW);
+            line(corner, corner + u * (-sy * arm), wide, on ? RED : YELLOW);
+        }
+    }
+    {
+        const bool out = !front || std::fabs(right / ahead) > 0.58f || std::fabs(up / ahead) > 0.40f;
+        float len = std::sqrt(right * right + up * up);
+        float ex = len > 1e-4f ? right / len : 0, ey = len > 1e-4f ? up / len : 1;
+        const float ring = 0.20f, size = out ? D * 0.022f : 0, wide = out ? D * 0.004f : 0;
+        Vec p{D * std::sin(ring) * ex, D * std::sin(ring) * ey, -D * std::cos(ring)};
+        Vec e{ex, ey, 0}, side{-ey, ex, 0};
+        Vec tip = p + e * size;
+        line(tip, p + e * (-size * 0.4f) + side * (size * 0.8f), wide, YELLOW);
+        line(tip, p + e * (-size * 0.4f) + side * (-size * 0.8f), wide, YELLOW);
+    }
+}
 
 std::shared_ptr<const R3DNativeScene> dogfight_scene() {
     auto scene = std::make_shared<R3DNativeScene>();
@@ -293,8 +374,8 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
             DogfightContact c;
             c.right = dot(d, s.at.right), c.up = -dot(d, s.at.down), c.ahead = dot(d, s.at.fwd);
             c.nose[0] = dot(ship.at.fwd, s.at.right), c.nose[1] = -dot(ship.at.fwd, s.at.down), c.nose[2] = dot(ship.at.fwd, s.at.fwd);
-            c.kind = ship.shape == &DESTROYER ? DogfightContact::CAPITAL
-                     : ship.shape == &TIE || ship.shape == &TIE_ADVANCED ? DogfightContact::FOE : DogfightContact::FRIEND;
+            c.kind = ship.shape == &DESTROYER ? DogfightContact::CAPITAL : foe(ship) ? DogfightContact::FOE : DogfightContact::FRIEND;
+            c.locked = ship.id == s.target;
             contacts.push_back(c);
         }
         // The battle's up (the world's y points down)
@@ -311,6 +392,7 @@ std::shared_ptr<const R3DNativeScene> dogfight_scene() {
         it.key = 0xFFFF;
         scene->items.push_back(it);
     }
+    target_marks(*scene, s, cam);
     const Vec axes[3] = {s.at.right, s.at.down, s.at.fwd};
     for (int i = 0; i < 3; i++) scene->cam_axes[i * 3] = axes[i].x, scene->cam_axes[i * 3 + 1] = axes[i].y, scene->cam_axes[i * 3 + 2] = axes[i].z;
     for (const Ship& ship : s.ships) {
