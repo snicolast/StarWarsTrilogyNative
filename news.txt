@@ -13,6 +13,11 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[11] 2026-11-11
+- Hoth base: the shadows of C-3PO and R2-D2 on the floor are black again, not coloured copies of the droids
+- The build now finds a Python 3.10 or later by itself, so it no longer fails with an older Python or the Microsoft Store one
+- build.bat tries the SDL3 and miniz downloads again when the connection drops
+
 [10] 2026-11-09
 - New explosions in Yavin: fireballs that billow and burn out into smoke, sparks, burning debris, and TIE fighters breaking into real pieces of themselves
 - Each explosion looks a little different, and its sound is louder, deeper and comes from where it is on the screen
