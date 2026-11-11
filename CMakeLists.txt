@@ -147,7 +147,17 @@ add_custom_command(OUTPUT ${MUSASHI_GEN}/m68kops.c ${MUSASHI_GEN}/m68kops.h
 
 # NVIDIA DLSS SDK (tools/get_dlss.bat fetches it, Windows only): optional. Without
 # it the game builds with a stub, and --aa dlaa falls back to MSAA as on a GPU
-# without DLSS
+# without DLSS.
+# The SDK is a static library for MSVC and links with nothing else: any other
+# compiler on Windows builds the game with dlss_loader.cpp, which looks for
+# dlss_bridge.dll (tools/dlss_bridge) next to the executable. DLSS_BRIDGE=ON
+# does the same with MSVC.
+if(WIN32 AND NOT MSVC)
+    set(DLSS_BRIDGE_DEFAULT ON)
+else()
+    set(DLSS_BRIDGE_DEFAULT OFF)
+endif()
+option(DLSS_BRIDGE "DLAA through dlss_bridge.dll instead of linking the NVIDIA DLSS SDK into the game" ${DLSS_BRIDGE_DEFAULT})
 set(NGX_FILES lib/nvsdk_ngx_d.lib include/nvsdk_ngx.h include/nvsdk_ngx_defs.h include/nvsdk_ngx_defs_vk.h
     include/nvsdk_ngx_helpers.h include/nvsdk_ngx_helpers_vk.h include/nvsdk_ngx_loader.h include/nvsdk_ngx_params.h include/nvsdk_ngx_vk.h)
 set(NGX_OK TRUE)
@@ -156,7 +166,10 @@ foreach(f ${NGX_FILES})
         set(NGX_OK FALSE)
     endif()
 endforeach()
-if(NGX_OK)
+if(WIN32 AND (DLSS_BRIDGE OR NOT MSVC))
+    set(DLSS_SOURCE src/video/dlss_loader.cpp)
+    set(DLSS_LIB "")
+elseif(NGX_OK)
     set(DLSS_SOURCE src/video/dlss.cpp)
     set(DLSS_LIB ${CMAKE_SOURCE_DIR}/third_party/ngx/lib/nvsdk_ngx_d.lib)
 else()
