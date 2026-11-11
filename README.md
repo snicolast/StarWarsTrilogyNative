@@ -7,6 +7,10 @@
   Not an emulator: the original code, recompiled to C++, with a modern Vulkan renderer.
 </p>
 
+<p align="center">
+  <a href="https://www.youtube.com/@snicolast"><img src="https://img.shields.io/badge/YouTube-@snicolast-red?logo=youtube&logoColor=white" alt="YouTube: snicolast"></a>
+</p>
+
 ## What you get
 
 - **True widescreen**, not stretched: 16:9, 21:9, 32:9 or 48:9 for three monitors.
