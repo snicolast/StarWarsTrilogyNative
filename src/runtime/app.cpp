@@ -182,7 +182,27 @@ static void pacing_sample(double now, double display, double shown, const R3DFra
     }
 }
 
+#ifndef __APPLE__
+// The game is a windowed program (no console window of its own). Started from
+// a terminal, its log goes to that terminal; redirected to a file or a pipe
+// (the tests), it goes there as it always did
+static void attach_parent_console() {
+    auto valid = [](DWORD which) {
+        HANDLE h = GetStdHandle(which);
+        return h != nullptr && h != INVALID_HANDLE_VALUE && GetFileType(h) != FILE_TYPE_UNKNOWN;
+    };
+    bool out_ok = valid(STD_OUTPUT_HANDLE), err_ok = valid(STD_ERROR_HANDLE);
+    if (out_ok && err_ok) return;
+    if (!AttachConsole(ATTACH_PARENT_PROCESS)) return;   // double click: no console at all
+    if (!out_ok) freopen("CONOUT$", "w", stdout);
+    if (!err_ok) freopen("CONOUT$", "w", stderr);
+}
+#endif
+
 int main(int argc, char** argv) {
+#ifndef __APPLE__
+    attach_parent_console();
+#endif
     setvbuf(stdout, nullptr, _IONBF, 0);   // keep logs even if the process dies
 #ifdef __APPLE__
     mac_enter_game_folder();
@@ -285,6 +305,8 @@ int main(int argc, char** argv) {
         window_w = std::max(SCREEN_W * 2, std::min(window_w, int(work.right - work.left) - 64));
     if (!presenter.init("Star Wars Trilogy Native by snicolast", window_w, SCREEN_H * 2, g_opt.dlaa)) {
         fprintf(stderr, "Could not start Vulkan; try --headless\n");
+        MessageBoxA(nullptr, "Could not start Vulkan. Update the graphics driver: the game needs Vulkan 1.3.",
+                    "Star Wars Trilogy Native", MB_OK | MB_ICONERROR);
         return 1;
     }
     printf("GPU: %s\n", presenter.device_name().c_str());
@@ -336,6 +358,8 @@ int main(int argc, char** argv) {
     R3DRenderer renderer;
     if (!renderer.init(presenter, g_opt.supersample, g_opt.msaa, g_opt.aniso, g_opt.dlaa)) {
         fprintf(stderr, "Could not start the 3D renderer\n");
+        MessageBoxA(nullptr, "Could not start the 3D renderer. Update the graphics driver.",
+                    "Star Wars Trilogy Native", MB_OK | MB_ICONERROR);
         return 1;
     }
     renderer.set_max_aspect(g_opt.max_aspect);
