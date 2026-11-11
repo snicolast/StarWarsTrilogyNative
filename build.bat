@@ -20,10 +20,13 @@ rem drive_program.bin too: data\ from an older build.bat can lack it (a set with
 rem epr-21119), and the game then stops at FAILED FEEDBACK LEVER INITIALIZE
 if exist data\crom.bin if exist data\drive_program.bin goto rom_ok
 if not exist "%ZIP%" goto no_rom
+echo [1/5] Extracting the ROM
 %SWT_PY% tools\romtool.py "%ZIP%" data || goto fail
 :rom_ok
+echo [2/5] Recompiling the PowerPC code
 %SWT_PY% tools\recomp.py data\crom.bin build\gen || goto fail
-rem NVIDIA DLSS SDK (not in the repository): fetched from NVIDIA's GitHub the first time.
+rem NVIDIA DLSS SDK (not in the repository): fetched from NVIDIA's GitHub the first
+rem time. Needed to build on any GPU; DLAA itself only runs on NVIDIA RTX.
 rem Every file is checked, not only the library: a third_party\ngx left incomplete
 rem (an interrupted download, files copied by hand) is fetched again (issue #32)
 set "NGX_OK=1"
@@ -31,6 +34,7 @@ for %%f in (include\nvsdk_ngx.h include\nvsdk_ngx_defs.h include\nvsdk_ngx_defs_
     if not exist third_party\ngx\%%f set "NGX_OK="
 )
 if not defined NGX_OK (
+    echo [3/5] Downloading the NVIDIA DLSS SDK ^(needed to build on any GPU; DLAA is optional^)
     call tools\get_dlss.bat || goto fail
 )
 rem SDL3 and miniz: downloaded once into third_party\downloads, CMake builds from there
@@ -41,7 +45,13 @@ rem its CMake, and a Windows SDK
 call tools\find_vs.bat
 if errorlevel 2 goto no_sdk
 if not exist "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" goto no_vs
-call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || goto fail
+echo [4/5] Setting up Visual Studio ^("%VSDIR%"^)
+rem Its output is hidden unless it fails (a missing Windows SDK, for example)
+call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >"%TEMP%\swt_vcvars.log" 2>&1 || (
+    type "%TEMP%\swt_vcvars.log"
+    echo Visual Studio setup failed. Check that the "Windows 11 SDK" component is installed.
+    goto fail
+)
 set "CMAKE=%VSDIR%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
 set "CTEST=%VSDIR%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe"
 if not exist "%CMAKE%" goto no_vs
@@ -56,14 +66,20 @@ if not defined CMAKE goto old_cmake
 for %%i in ("%CMAKE%") do set "CTEST=%%~dpictest.exe"
 echo The CMake of Visual Studio is too old, using "%CMAKE%"
 :cmake_ok
+echo [5/5] Building
 "%CMAKE%" -S . -B build\cmake -G Ninja -DCMAKE_BUILD_TYPE=Release || goto fail
-"%CMAKE%" --build build\cmake || goto fail
-"%CTEST%" --test-dir build\cmake --output-on-failure || goto fail
+"%CMAKE%" --build build\cmake --target StarWarsTrilogy || goto fail
 copy /y build\cmake\StarWarsTrilogy.exe StarWarsTrilogy.exe >nul
 rem NVIDIA DLSS runtime (official signed DLL) for --aa dlaa
 if exist third_party\ngx\bin\nvngx_dlss.dll copy /y third_party\ngx\bin\nvngx_dlss.dll nvngx_dlss.dll >nul
+rem The tests after the game: one that does not build or pass (a new compiler's
+rem bug, say) is reported but does not take StarWarsTrilogy.exe away
+set "TESTS_OK=1"
+"%CMAKE%" --build build\cmake || set "TESTS_OK="
+if defined TESTS_OK "%CTEST%" --test-dir build\cmake --output-on-failure || set "TESTS_OK="
 echo.
 echo Done: StarWarsTrilogy.exe
+if not defined TESTS_OK echo Warning: the tests did not build or did not pass ^(see above^). The game is built and can be played.
 if defined PAUSE_AT_END pause
 exit /b 0
 
@@ -99,7 +115,8 @@ goto fail
 
 :no_vs
 echo Visual Studio 2022 with the x64 C++ tools and CMake not found.
-echo Run install.bat instead: it installs them, then builds.
+echo Run install.bat instead: it installs them, then builds. Or install Build Tools for
+echo Visual Studio 2022 with the "Desktop development with C++" workload yourself.
 goto fail
 :no_sdk
 echo Visual Studio is in "%VSDIR%" but there is no Windows SDK. Run install.bat: it adds
