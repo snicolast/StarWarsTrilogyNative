@@ -110,6 +110,26 @@ void R3DSceneBuilder::build(const R3DFrameState& state, R3DScene& out) {
     if (remove_letterbox_) r3d_strip_letterbox(out);
     if (hud_edges_) r3d_anchor_hud(out);
     if (share_world_) {
+        // Star Wars Trilogy: the shadows of C-3PO and R2-D2 on the floor at the
+        // end of Hoth's base are the actors again, flattened onto the floor, in
+        // a viewport with no light at all (black). r3d_share_world gives that
+        // viewport the world's light, as the same viewport draws the actors too
+        // (issue #15), so the flattened copies are made black first (issue #59)
+        for (const R3DViewport& v : out.viewports) {
+            if (v.sun_intensity > 0 || v.ambient > 0 || v.build_index >= viewport_instances_.size()) continue;
+            for (const R3DInstance& in : viewport_instances_[v.build_index]) {
+                if (!in.flat) continue;
+                auto black = [&](uint32_t first, const uint32_t* range) {
+                    for (uint32_t i = range[0]; i < range[1]; i++) {
+                        R3DVertex& x = out.vertices[first + i];
+                        x.color &= 0xFF000000u;
+                        x.flags &= ~R3D_SPECULAR;
+                    }
+                };
+                black(v.opaque_first, in.opaque);
+                black(v.trans_first, in.trans);
+            }
+        }
         r3d_share_world(out);
         r3d_find_glows(out, viewport_instances_);
         // The star field's orientation, from its biggest model
@@ -819,6 +839,13 @@ void R3DSceneBuilder::model(uint32_t addr, const Mat& m, const Attribs& a) {
             float len = std::sqrt(col[0] * col[0] + col[1] * col[1] + col[2] * col[2]);
             for (int i = 0; i < 3; i++) in.axes[c * 3 + i] = len > 0 ? col[i] / len : 0;
         }
+        const float* q = m.m;
+        float det = q[0] * (q[5] * q[10] - q[9] * q[6]) - q[4] * (q[1] * q[10] - q[9] * q[2]) +
+                    q[8] * (q[1] * q[6] - q[5] * q[2]);
+        float size = 1;
+        for (int c = 0; c < 3; c++)
+            size *= std::sqrt(q[c * 4] * q[c * 4] + q[c * 4 + 1] * q[c * 4 + 1] + q[c * 4 + 2] * q[c * 4 + 2]);
+        in.flat = size > 0 && std::fabs(det) < 1e-3f * size;
         in.path = path;
         in.start = start_addr;
         instances_.push_back(in);
