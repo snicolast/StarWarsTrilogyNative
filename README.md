@@ -59,6 +59,7 @@ the game stops at *FAILED FEEDBACK LEVER INITIALIZE*. `build.bat` says which chi
 ## Install
 
 You need Windows 10/11 (64-bit) and a GPU with a Vulkan 1.3 driver (most from 2016 on).
+DLAA needs an NVIDIA RTX; on other cards it switches itself off, and the game builds the same on any GPU.
 
 1. Download this repository (green **Code** button > **Download ZIP**) and unzip it.
 2. Put `swtrilgy.zip` in the folder.
@@ -85,7 +86,8 @@ tick *MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)*, *C++ CMake tools fo
 and one *Windows 11 SDK* (it works on Windows 10 too).
 
 Then run `build.bat` with `swtrilgy.zip` next to it (or pass its path: `build.bat D:\roms\swtrilgy.zip`).
-It downloads SDL3, miniz and NVIDIA DLSS on the first run.
+It downloads SDL3, miniz and NVIDIA DLSS on the first run. DLSS is optional: if that download
+fails, the game is built without it and uses MSAA.
 </details>
 
 If the build can't download SDL3 or miniz (a proxy, an antivirus, a flaky connection), it lists

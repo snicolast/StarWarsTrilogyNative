@@ -145,6 +145,28 @@ add_custom_command(OUTPUT ${MUSASHI_GEN}/m68kops.c ${MUSASHI_GEN}/m68kops.h
     DEPENDS m68kmake ${MUSASHI_DIR}/m68k_in.c
     COMMENT "Musashi opcode tables")
 
+# NVIDIA DLSS SDK (tools/get_dlss.bat fetches it, Windows only): optional. Without
+# it the game builds with a stub, and --aa dlaa falls back to MSAA as on a GPU
+# without DLSS
+set(NGX_FILES lib/nvsdk_ngx_d.lib include/nvsdk_ngx.h include/nvsdk_ngx_defs.h include/nvsdk_ngx_defs_vk.h
+    include/nvsdk_ngx_helpers.h include/nvsdk_ngx_helpers_vk.h include/nvsdk_ngx_loader.h include/nvsdk_ngx_params.h include/nvsdk_ngx_vk.h)
+set(NGX_OK TRUE)
+foreach(f ${NGX_FILES})
+    if(NOT EXISTS ${CMAKE_SOURCE_DIR}/third_party/ngx/${f})
+        set(NGX_OK FALSE)
+    endif()
+endforeach()
+if(NGX_OK)
+    set(DLSS_SOURCE src/video/dlss.cpp)
+    set(DLSS_LIB ${CMAKE_SOURCE_DIR}/third_party/ngx/lib/nvsdk_ngx_d.lib)
+else()
+    if(NOT APPLE)
+        message(STATUS "NVIDIA DLSS SDK not found in third_party/ngx: building without DLAA")
+    endif()
+    set(DLSS_SOURCE src/video/dlss_stub.cpp)
+    set(DLSS_LIB "")
+endif()
+
 # What each system does in its own way
 set(MAC_DIR ${CMAKE_SOURCE_DIR}/src/platform/mac)
 if(APPLE)
@@ -161,13 +183,16 @@ else()
     set(PLATFORM_SOURCES
         src/runtime/raw_mice.cpp
         src/audio/audio_out.cpp
-        src/video/dlss.cpp
+        ${DLSS_SOURCE}
         src/ui/menu_music.cpp
         src/ui/splash_video.cpp
         res/app.rc)
 endif()
 
-add_executable(StarWarsTrilogy
+# WIN32: a windowed program on Windows, so no console window opens with the
+# game. main() stays the entry point (/ENTRY below); app.cpp attaches to the
+# console of a terminal it was started from, so the log still shows there
+add_executable(StarWarsTrilogy WIN32
     src/runtime/runtime.cpp
     src/runtime/app.cpp
     src/runtime/app_files.cpp
@@ -252,7 +277,7 @@ if(APPLE)
 else()
     target_compile_definitions(StarWarsTrilogy PRIVATE VK_USE_PLATFORM_WIN32_KHR)
     target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static winmm ole32 oleaut32 windowscodecs mfplat mfuuid gdi32 dwmapi shell32 winhttp
-        ${CMAKE_SOURCE_DIR}/third_party/ngx/lib/nvsdk_ngx_d.lib)
+        ${DLSS_LIB})
 endif()
 
 if(MSVC)
@@ -260,6 +285,7 @@ if(MSVC)
     # C of Musashi and volk keeps the default level)
     target_compile_options(StarWarsTrilogy PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/bigobj /W4 /wd4146 /wd4102 /fp:strict /utf-8>)
     target_compile_definitions(StarWarsTrilogy PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_link_options(StarWarsTrilogy PRIVATE /ENTRY:mainCRTStartup)
     # The generated code calls boot loops that never return, so what follows
     # them is unreachable (C4702) in a handful of functions: harmless
     set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS /wd4702)

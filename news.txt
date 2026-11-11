@@ -13,6 +13,10 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[13] 2026-11-11
+- No more console window behind the game
+- Building: fixed a Visual Studio setup error on PCs with an unusual PATH, and the NVIDIA DLSS download is now optional
+
 [12] 2026-11-11
 - Sega Rally 2 is out, recompiled for PC like this one: it is now in the main menu under MORE RECOMPS, beside The Lost World
 - If it is in a folder next to this one, ENTER starts it; if not, ENTER opens its page, where you can download it
