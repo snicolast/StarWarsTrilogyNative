@@ -13,6 +13,10 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[12] 2026-11-11
+- Sega Rally 2 is out, recompiled for PC like this one: it is now in the main menu under MORE RECOMPS, beside The Lost World
+- If it is in a folder next to this one, ENTER starts it; if not, ENTER opens its page, where you can download it
+
 [11] 2026-11-11
 - Hoth base: the shadows of C-3PO and R2-D2 on the floor are black again, not coloured copies of the droids
 - The build now finds a Python 3.10 or later by itself, so it no longer fails with an older Python or the Microsoft Store one

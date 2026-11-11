@@ -120,7 +120,7 @@ F11 or Alt+Enter toggles fullscreen. Everything else is in **Options**.
 ## More
 
 - Other recompiled arcade games: [The Lost World](https://github.com/snicolast/LostWorldNative)
-  and [Sega Rally 2](https://github.com/snicolast/SegaRally2Native) (The Lost World also in the main menu under **More recomps**).
+  and [Sega Rally 2](https://github.com/snicolast/SegaRally2Native) (both also in the main menu under **More recomps**).
 - [How it works](docs/ARCHITECTURE.md): the PowerPC to C++ recompiler and the hardware.
 
 ## Support
