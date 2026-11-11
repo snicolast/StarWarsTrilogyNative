@@ -261,6 +261,12 @@ add_executable(StarWarsTrilogy WIN32
     ${PLATFORM_SOURCES}
 )
 add_dependencies(StarWarsTrilogy shaders)
+# hub.toml (NicoLauncher) asks for the game right where it is played from, so
+# there is no second copy of it in the build folder. build.bat copies it.
+option(GAME_IN_SOURCE_DIR "Link StarWarsTrilogy.exe into the project's folder instead of the build folder" OFF)
+if(GAME_IN_SOURCE_DIR)
+    set_target_properties(StarWarsTrilogy PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
 target_include_directories(StarWarsTrilogy PRIVATE
     ${SHADER_OUT}
     src/runtime

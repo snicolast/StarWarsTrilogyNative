@@ -42,22 +42,20 @@ name = "Recompiling the PowerPC code"
 run = ["{python}", "tools/recomp.py", "data/crom.bin", "build/gen"]
 
 # A build folder of its own, apart from the one build.bat uses with Visual
-# Studio. The compiler and Python are named: CMake is not left to find others
+# Studio. The compiler and Python are named: CMake is not left to find others.
+# GAME_IN_SOURCE_DIR: StarWarsTrilogy.exe is linked straight into this folder
 [[step]]
 name = "Configuring"
 run = [
     "{cmake}", "-S", ".", "-B", "build/kit", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
     "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-clang", "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-clang++",
     "-DCMAKE_RC_COMPILER=x86_64-w64-mingw32-windres", "-DPython3_EXECUTABLE={python}",
+    "-DGAME_IN_SOURCE_DIR=ON",
 ]
 
 [[step]]
 name = "Compiling"
 run = ["{cmake}", "--build", "build/kit", "--target", "StarWarsTrilogy"]
-
-[[step]]
-name = "Copying the game"
-copy = { from = "build/kit/StarWarsTrilogy.exe", to = "StarWarsTrilogy.exe" }
 
 # After the game is in place: a test that does not build or pass is a
 # warning, and does not take StarWarsTrilogy.exe away
