@@ -26,6 +26,7 @@ struct R3DInstance {
     uint32_t opaque[2], trans[2];   // its vertices in the viewport's lists (first, end)
     uint32_t path = 0;              // the same for every copy of the model in the viewport
     uint32_t start = 0;             // model address (where its polygons start)
+    bool flat = false;              // its matrix flattens it onto a plane (rank 2): a shadow on the floor
 };
 
 class R3DWorldTracker {
