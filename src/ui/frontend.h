@@ -139,7 +139,7 @@ public:
 private:
     enum Id {
         PLAY, OPTIONS, QUIT, ARCADE, BACK, RESUME, SETTINGS, QUIT_TO_MENU, TABS,
-        RECORDS, DEBUG, DEBUG_STAGE, DEBUG_PHASE, MORE_GAMES, LOST_WORLD, SEGA_RALLY_2,
+        RECORDS, DEBUG, DEBUG_STAGE, DEBUG_PHASE, MORE_GAMES, LOST_WORLD, SEGA_RALLY_2, COFFEE,
         OPT_QUALITY, OPT_DISPLAY, OPT_VOLUME, OPT_MUSIC, OPT_SPEAKERS, OPT_REAR, OPT_SAMPLES, OPT_AA, OPT_HAZE, OPT_BLOOM, OPT_AO, OPT_SKY, OPT_SUN, OPT_SHADOWS, OPT_SHAFTS, OPT_SOFT, OPT_HDR, OPT_RELIEF, OPT_SHARPEN, OPT_TEXT, OPT_CROSS, OPT_MICE,
         OPT_SAT, OPT_GAMMA, OPT_MOTION, OPT_PAD_SPEED, OPT_GYRO, OPT_GYRO_SPEED, OPT_VIBRATION, OPT_ASSIST, OPT_RT, OPT_MENU_MUSIC, EXTRA, DOGFIGHT, OPT_POINTER, OPT_SIGHT, OPT_PAD_AIM, OPT_PAD_INVERT, OPT_DUEL_INVERT, OPT_UPDATES, OPT_SCALE,
         OPT_ASPECT, OPT_EXPLOSIONS,
@@ -250,9 +250,7 @@ private:
     void news_choose(int button);
     void start_update();
 
-    RECT coffee_rect_{};   // the donation link (main menu)
-    bool coffee_hot_ = false, coffee_focus_ = false;
-    void open_coffee();
+    void open_coffee();   // the donation link (an entry of MORE RECOMPS)
 
     // The splash screens: their pictures, which one is on and since when
     std::vector<Picture> splash_;
