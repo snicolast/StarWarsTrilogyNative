@@ -525,6 +525,7 @@ std::vector<Frontend::Item> Frontend::items() const {
                                 : (pad_prompts ? L"Found on this PC: A closes this game and starts it"
                                                : L"Found on this PC: ENTER closes this game and starts it"))});
         }
+        list.push_back({COFFEE, COFFEE_LABEL, L"", COFFEE_HINT});
         list.push_back({BACK, L"BACK", L"", L"Return to the main menu"});
         return list;
     }
@@ -724,7 +725,6 @@ void Frontend::open(Screen s) {
         video_px_ = {};
         splash_.clear();
     }
-    coffee_focus_ = false;
     screen_ = s;
     selected_ = 0;
     scroll_ = 0;
@@ -761,6 +761,7 @@ void Frontend::activate(const Item& it, int dir) {
         else play_recomp(r);
         break;
     }
+    case COFFEE: open_coffee(); break;
     case DOGFIGHT: break;   // not made yet (greyed out)
     case BACK: back(); break;
     case RESUME: push(Action::Resume); break;
@@ -905,20 +906,8 @@ bool Frontend::key(int vk) {
         open_recomp_page(selected_recomp());
         return true;
     }
-    if (coffee_focus_) switch (vk) {   // the donation link at the top: Enter opens it, Up / Down go back to the list
-        case VK_RETURN: case VK_SPACE: open_coffee(); return true;
-        case VK_UP: case 'W': coffee_focus_ = false; dirty_ = true; select(n - 1); return true;
-        case VK_DOWN: case 'S': coffee_focus_ = false; dirty_ = true; select(0); return true;
-        case VK_LEFT: case 'A': case VK_RIGHT: case 'D': return true;
-        }
     switch (vk) {
-    case VK_UP: case 'W':
-        if (screen_ == Screen::Main && has_backdrop() && selected_ == 0) {   // above the first entry: the donation link
-            coffee_focus_ = dirty_ = true;
-            return true;
-        }
-        select((selected_ + n - 1) % n);
-        return true;
+    case VK_UP: case 'W': select((selected_ + n - 1) % n); return true;
     case VK_DOWN: case 'S': select((selected_ + 1) % n); return true;
     case VK_LEFT: case 'A':
         if (tabs_row) set_tab(tab_ - 1);
@@ -1198,15 +1187,8 @@ void Frontend::mouse_move(int x, int y) {
         POINT p{x, y};
         if (PtInRect(&hit_[i], p)) hit = int(i);
     }
-    if (hit >= 0) {
-        if (coffee_focus_) dirty_ = true;
-        coffee_focus_ = false;
-        select(hit);
-    }
+    if (hit >= 0) select(hit);
     hovered_ = hit;
-    bool on_coffee = screen_ == Screen::Main && PtInRect(&coffee_rect_, POINT{x, y}) != 0;
-    if (on_coffee != coffee_hot_) dirty_ = true;
-    coffee_hot_ = on_coffee;
 }
 
 void Frontend::click(int x, int y) {
@@ -1219,10 +1201,6 @@ void Frontend::click(int x, int y) {
     if (news_open_ && screen_ == Screen::Main) {
         for (int b = 0; b < 2; b++)
             if (PtInRect(&news_buttons_[b], p)) news_choose(b);
-        return;
-    }
-    if (screen_ == Screen::Main && PtInRect(&coffee_rect_, p)) {
-        open_coffee();
         return;
     }
     if (screen_ == Screen::Records && (PtInRect(&more_up_, p) || PtInRect(&more_down_, p))) {
@@ -2014,7 +1992,7 @@ RECT Frontend::more_logo_rect(int i) const {
 
 // Main, Play, Extra and Debug on the backdrop: the entries in a
 // column at the right under the logo, the description under them; the
-// donation link and the records at the top left, the credits at the bottom
+// records at the top left, the credits at the bottom
 void Frontend::draw_side_menu(const std::vector<Item>& list) {
     auto U = [&](float v) { return int(v * u_ + 0.5f); };
     int w = w_, h = h_;
@@ -2028,33 +2006,14 @@ void Frontend::draw_side_menu(const std::vector<Item>& list) {
         text(MONO, U(24), sub, tx, y0, 2, {0x9ED8FF, 0x6AB8F0});
         y0 += U(50);
     }
-    coffee_rect_ = RECT{};
-    if (screen_ == Screen::Main) {   // the donation link and how far the player has got, at the top left
+    if (screen_ == Screen::Main) {   // how far the player has got, at the top left
         int got = 0;
         for (int64_t t : records.unlocked) got += t != 0;
         int best = records.stats.best_score;
         std::vector<std::pair<std::wstring, std::wstring>> chips = {
             {L"ACHIEVEMENTS", std::to_wstring(got) + L"/" + std::to_wstring(achievement_table().size())}};
         if (best > 0) chips.push_back({L"BEST SCORE", grouped(best)});
-        int x0 = U(70), cy0 = U(56), ch = U(56), cup = U(28);
-        int coffee_w = U(24) + cup + U(12) + measure(ITEM, U(21), COFFEE_LABEL) + U(28);
-        int x1 = x0 + coffee_w;
-        coffee_rect_ = {x0, cy0, x1, cy0 + ch};   // brighter under the pointer, a click opens it
-        bool lit = coffee_hot_ || coffee_focus_;
-        if (coffee_focus_)   // chosen with the keys or a pad: a ring round it
-            pill(x0 - U(5), cy0 - U(5), x1 + U(5), cy0 + ch + U(5), SABER, 1);
-        pill(x0, cy0, x1, cy0 + ch, lit ? 0xFFE94D : 0xFFDD00, lit ? 1.0f : 0.9f);
-        // A takeaway cup: the lid, the body narrowing to the bottom, a yellow sleeve round its middle
-        int cx = x0 + U(24) + cup / 2, cy = cy0 + (ch - cup) / 2;
-        pill(cx - cup / 2, cy, cx + cup / 2, cy + cup * 22 / 100, COFFEE_INK, 1);
-        for (int y = cy + cup * 26 / 100; y < cy + cup; y++) {
-            int half = cup * 42 / 100 - (y - cy) * 12 / 100, edge = std::max(1, U(2));
-            fill(cx - half, y, cx + half, y + 1, COFFEE_INK, 1);
-            if (y >= cy + cup * 48 / 100 && y < cy + cup * 72 / 100)
-                fill(cx - half + edge, y, cx + half - edge, y + 1, 0xFFDD00, 1);
-        }
-        text(ITEM, U(21), COFFEE_LABEL, x0 + U(24) + cup + U(12), cy0 + ch / 2 - U(13), 0, {COFFEE_INK, COFFEE_INK});
-        int x = x1 + U(16);
+        int x = U(70), cy0 = U(56), ch = U(56);
         for (const auto& c : chips) {
             int lw = measure(ITEM, U(21), c.first), vw = measure(ITEM, U(26), c.second);
             int cw = U(22) + lw + U(12) + vw + U(22);
@@ -2080,7 +2039,7 @@ void Frontend::draw_side_menu(const std::vector<Item>& list) {
     int y = y0;
     for (int i = 0; i < n; i++) {
         const Item& it = list[i];
-        bool sel = i == selected_ && !coffee_focus_;
+        bool sel = i == selected_;
         if (sel) {   // lightsaber blue from the right edge, a bright blade along it
             float a = it.enabled ? 0.36f : 0.16f;
             hgrad(band0, y, band1, y + spacing, SABER, 0.0f, a);
@@ -2094,16 +2053,36 @@ void Frontend::draw_side_menu(const std::vector<Item>& list) {
                          : debug_row ? Style{0xFF8A7A, 0xD8402E, EDGE, U(2), 0.95f, U(3)}
                                      : Style{PALE_TOP, PALE_BOTTOM, EDGE, U(2), 0.95f, U(3)};
         int ty = y + spacing / 2 - item_px * 55 / 100;
-        int tw = text(display(), item_px, it.label, tx, ty, 2, st);
+        int tw = 0;
+        if (it.id == COFFEE) {   // the donation link: Buy Me a Coffee's yellow button and its cup, at the right
+            int ch = std::min(U(56), spacing - U(14)), cup = ch / 2;
+            int x1 = tx, x0 = x1 - (U(24) + cup + U(12) + measure(ITEM, U(21), COFFEE_LABEL) + U(28));
+            int cy0 = y + (spacing - ch) / 2;
+            if (sel)   // chosen: a ring round it, and brighter
+                pill(x0 - U(5), cy0 - U(5), x1 + U(5), cy0 + ch + U(5), SABER, 1);
+            pill(x0, cy0, x1, cy0 + ch, sel ? 0xFFE94D : 0xFFDD00, sel ? 1.0f : 0.9f);
+            // A takeaway cup: the lid, the body narrowing to the bottom, a yellow sleeve round its middle
+            int cx = x0 + U(24) + cup / 2, cy = cy0 + (ch - cup) / 2;
+            pill(cx - cup / 2, cy, cx + cup / 2, cy + cup * 22 / 100, COFFEE_INK, 1);
+            for (int yy = cy + cup * 26 / 100; yy < cy + cup; yy++) {
+                int half = cup * 42 / 100 - (yy - cy) * 12 / 100, edge = std::max(1, U(2));
+                fill(cx - half, yy, cx + half, yy + 1, COFFEE_INK, 1);
+                if (yy >= cy + cup * 48 / 100 && yy < cy + cup * 72 / 100)
+                    fill(cx - half + edge, yy, cx + half - edge, yy + 1, 0xFFDD00, 1);
+            }
+            text(ITEM, U(21), COFFEE_LABEL, x0 + U(24) + cup + U(12), cy0 + ch / 2 - U(13), 0, {COFFEE_INK, COFFEE_INK});
+        } else {
+            tw = text(display(), item_px, it.label, tx, ty, 2, st);
+        }
         if (!it.value.empty())   // e.g. COMING SOON
             text(MONO, U(20), it.value, tx - tw - U(28), y + spacing / 2 - U(12), 2, {0x7FB0D8, 0x6090B8});
         hit_.push_back({band0, y, band1, y + spacing});
         values_.push_back({-1, 0});
         y += spacing;
     }
-    if (selected_ < n || coffee_focus_) {
+    if (selected_ < n) {
         y += U(10);
-        for (const std::wstring& line : wrap(ITEM, U(24), coffee_focus_ ? COFFEE_HINT : list[selected_].hint, col_w - U(20))) {
+        for (const std::wstring& line : wrap(ITEM, U(24), list[selected_].hint, col_w - U(20))) {
             text(ITEM, U(24), line, tx, y, 2, {HINT, HINT});
             y += U(32);
         }
