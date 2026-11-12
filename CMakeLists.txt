@@ -18,7 +18,9 @@ endif()
 set(GEN_DIR ${CMAKE_SOURCE_DIR}/build/gen)
 include(${GEN_DIR}/files.cmake)
 
-# glslang compiles the GLSL shaders to SPIR-V during the build (no SDK needed)
+# glslang compiles the GLSL shaders to SPIR-V during the build (no SDK needed).
+# The commands below name it (and m68kmake) as targets: when cross-compiling
+# (cmake/linux-aarch64.cmake) CMake then runs them through the emulator
 set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
 set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)
 set(ENABLE_GLSLANG_BINARIES ON CACHE BOOL "" FORCE)
@@ -44,7 +46,7 @@ foreach(src ${SHADER_SOURCES})
     # in any of them rebuilds it (no list of includes to keep by hand)
     add_custom_command(OUTPUT ${out}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT}
-        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 ${SHADER_DEFINES} --vn spv_${var} --depfile ${out}.d -o ${out} ${src}
+        COMMAND glslang-standalone -V --target-env vulkan1.2 ${SHADER_DEFINES} --vn spv_${var} --depfile ${out}.d -o ${out} ${src}
         DEPENDS ${src} glslang-standalone
         DEPFILE ${out}.d
         COMMENT "Shader ${name}")
@@ -56,7 +58,7 @@ foreach(name r3d ao)
     set(out ${SHADER_OUT}/${name}_rt.frag.h)
     add_custom_command(OUTPUT ${out}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT}
-        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 ${SHADER_DEFINES} -DRAY_TRACING --vn spv_${name}_rt_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
+        COMMAND glslang-standalone -V --target-env vulkan1.2 ${SHADER_DEFINES} -DRAY_TRACING --vn spv_${name}_rt_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
         DEPENDS ${SHADER_DIR}/${name}.frag glslang-standalone
         DEPFILE ${out}.d
         COMMENT "Shader ${name}.frag (ray tracing)")
@@ -68,7 +70,7 @@ foreach(name r3d compose)
     set(out ${SHADER_OUT}/${name}_few.frag.h)
     add_custom_command(OUTPUT ${out}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT}
-        COMMAND $<TARGET_FILE:glslang-standalone> -V --target-env vulkan1.2 ${SHADER_DEFINES} -DFEW_IMAGES --vn spv_${name}_few_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
+        COMMAND glslang-standalone -V --target-env vulkan1.2 ${SHADER_DEFINES} -DFEW_IMAGES --vn spv_${name}_few_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
         DEPENDS ${SHADER_DIR}/${name}.frag glslang-standalone
         DEPFILE ${out}.d
         COMMENT "Shader ${name}.frag (few images)")
@@ -155,7 +157,7 @@ if(MSVC)
 endif()
 add_custom_command(OUTPUT ${MUSASHI_GEN}/m68kops.c ${MUSASHI_GEN}/m68kops.h
     COMMAND ${CMAKE_COMMAND} -E make_directory ${MUSASHI_GEN}
-    COMMAND $<TARGET_FILE:m68kmake> ${MUSASHI_GEN} ${MUSASHI_DIR}/m68k_in.c
+    COMMAND m68kmake ${MUSASHI_GEN} ${MUSASHI_DIR}/m68k_in.c
     DEPENDS m68kmake ${MUSASHI_DIR}/m68k_in.c
     COMMENT "Musashi opcode tables")
 
@@ -424,10 +426,11 @@ if(LW_TESTS)
     if(NOT APPLE)
         add_test(NAME menu_music COMMAND menu_music_test)
     endif()
-    # 3.10: the version the tools need, so an older Python in PATH is skipped (issue #51)
+    # 3.10: the version the tools need, so an older Python in PATH is skipped (issue #51).
+    # By its path: as a target, a cross build would run it through the emulator
     find_package(Python3 3.10 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
-        add_test(NAME fnv_python COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/fnv_test.py
+        add_test(NAME fnv_python COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fnv_test.py
                  ${CMAKE_SOURCE_DIR}/tests/fnv_expected.txt)
     endif()
 endif()
