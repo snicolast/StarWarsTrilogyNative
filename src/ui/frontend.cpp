@@ -257,7 +257,7 @@ void FrontendSettings::save(const char* path) const {
     fprintf(f, "duel_invert = %s\n", INVERT[duel_invert]);
     fprintf(f, "aspect = %s\n", ASPECT_WORDS[aspect]);
     fprintf(f, "explosions = %s\n", explosions ? "enhanced" : "arcade");
-#ifdef __APPLE__
+#ifndef _WIN32
     fprintf(f, "supersample = %d\n", supersample);
 #endif
     fprintf(f, "check_updates = %d\nnews_seen = %d\n", check_updates, news_seen);
@@ -539,7 +539,7 @@ std::vector<Frontend::Item> Frontend::items() const {
                  L"Smooth interpolation of the instrument and voice samples, or the original chip's"},
                 {OPT_QUALITY, L"QUALITY", QUALITY_NAMES[settings.quality()], QUALITY_HINTS[settings.quality()]},
                 {OPT_AA, L"ANTI-ALIASING", AA[settings.aa], aa_hint},
-#ifdef __APPLE__
+#ifndef _WIN32   // macOS and Linux (Windows has DLAA)
                 {OPT_SCALE, L"SUPERSAMPLING", settings.supersample == 100 ? L"OFF" : settings.supersample == 150 ? L"1.5X" : L"2X",
                  L"The 3D drawn larger and scaled down: smoother edges and textures.  Applies on the next start"},
 #endif

@@ -24,10 +24,12 @@ void options_from_settings(Options& o, const FrontendSettings& ini) {
     o.rear_boost = ini.rear_boost;
 #ifdef __APPLE__
     o.msaa = ini.aa == 1 ? 8 : ini.aa == 2 ? 1 : 4;
-    o.supersample = float(ini.supersample) / 100.0f;
 #else
     o.dlaa = ini.aa == 1;
     if (ini.aa == 2) o.msaa = 1;
+#endif
+#ifndef _WIN32   // the SUPERSAMPLING entry of the menu (macOS, Linux)
+    o.supersample = float(ini.supersample) / 100.0f;
 #endif
     int aspect = std::clamp(ini.aspect, 0, 4);
     if (aspect != aspect_level(o.max_aspect)) o.max_aspect = MAX_ASPECT[aspect];   // --aspect 2.6 stays as 21:9
@@ -60,9 +62,11 @@ void settings_from_options(FrontendSettings& s, const Options& o) {
     s.rear_boost = std::clamp(o.rear_boost / 3 * 3, 0, 12);
 #ifdef __APPLE__
     s.aa = o.msaa >= 8 ? 1 : o.msaa <= 1 ? 2 : 0;
-    s.supersample = o.supersample >= 2.0f ? 200 : o.supersample >= 1.5f ? 150 : 100;
 #else
     s.aa = o.dlaa ? 1 : o.msaa <= 1 ? 2 : 0;
+#endif
+#ifndef _WIN32
+    s.supersample = o.supersample >= 2.0f ? 200 : o.supersample >= 1.5f ? 150 : 100;
 #endif
     s.aspect = aspect_level(o.max_aspect);   // --aspect 2.6 shows as 21:9 and is kept until changed
     s.haze = o.haze > 0;

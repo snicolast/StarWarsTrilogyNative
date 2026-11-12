@@ -36,7 +36,7 @@ struct FrontendSettings {
 #else
     int aa = 0;        // 0 MSAA, 1 DLAA, 2 off (takes effect on the next launch)
 #endif
-    int supersample = 100;   // the 3D drawn at this % of the window and scaled down (macOS menu: 100, 150, 200)
+    int supersample = 100;   // the 3D drawn at this % of the window and scaled down (the macOS and Linux menu: 100, 150, 200)
     bool haze = true;  // distance haze
     int bloom = 2;     // glow around bright things: 0 off, 1 low, 2 medium, 3 high
     bool ao = true;    // ambient occlusion
