@@ -1,6 +1,13 @@
 #version 450
-#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
+#ifdef NO_INDEXING
+// GPUs without descriptor indexing (r3d_renderer.cpp; the Raspberry Pi 5): the
+// arrays hold one picture, never picked by a variable
+#define NONUNIFORM(i) 0
+#else
+#extension GL_EXT_nonuniform_qualifier : require
+#define NONUNIFORM(i) nonuniformEXT(i)
+#endif
 // Final composition: background 2D layers, 3D image and foreground 2D layers,
 // with black bars to preserve the Model 3 aspect ratio, plus an optional
 // high-visibility crosshair drawn at the real mouse position.
@@ -415,7 +422,7 @@ bool sky_layer(vec2 qb, vec2 dx, vec2 dy, inout vec4 back) {
     bool procedural = (b.b & 128u) != 0u;
     vec4 s;
     if (!procedural) {
-        s = textureGrad(overlays[nonuniformEXT(slot)], fract(at / 512.0), dx, dy);
+        s = textureGrad(overlays[NONUNIFORM(slot)], fract(at / 512.0), dx, dy);
     } else {
         // Colours of this sky's band of rows, taken from its original (last row)
         float y = mod(at.y, 512.0);
@@ -430,7 +437,7 @@ bool sky_layer(vec2 qb, vec2 dx, vec2 dy, inout vec4 back) {
             s = vec4(sky_procedural(vec2(at.x, y - 512.0), pc.sky.x * 0.005, sky, lit), 1.0);
         } else {
             // Trees on the horizon: the dark parts of the original's bottom rows
-            vec4 o = textureGrad(overlays[nonuniformEXT(slot)], fract(at / 512.0), dx, dy);
+            vec4 o = textureGrad(overlays[NONUNIFORM(slot)], fract(at / 512.0), dx, dy);
             float tree = y > 455.0 ? 1.0 - smoothstep(0.10, 0.20, dot(o.rgb, vec3(0.2126, 0.7152, 0.0722))) : 0.0;
             s = vec4(mix(sky_procedural(vec2(at.x, y), pc.sky.x * 0.005, sky, lit), o.rgb * 0.9, tree), 1.0);
         }
@@ -460,7 +467,7 @@ vec4 replacement_pictures(vec4 under, vec2 pos, bool below_3d) {
         vec4 rect = round(texelFetch(text_cells, ivec2(1 + 2 * i, OVERLAY_ROW), 0) * 255.0) * 8.0;
         vec2 r = (pos - rect.xy) / (rect.zw - rect.xy);
         if (all(greaterThanEqual(r, vec2(0.0))) && all(lessThan(r, vec2(1.0)))) {
-            vec4 o = texture(overlays[nonuniformEXT(uint(info.r * 255.0 + 0.5))], r);
+            vec4 o = texture(overlays[NONUNIFORM(uint(info.r * 255.0 + 0.5))], r);
             under = under * (1.0 - o.a) + vec4(clamp(o.rgb + pc.hud.z, 0.0, 1.0) * o.a, o.a);
         }
     }

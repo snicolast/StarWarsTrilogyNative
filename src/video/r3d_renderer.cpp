@@ -12,9 +12,11 @@
 #include "bloom.frag.h"
 #include "compose.frag.h"
 #include "compose_few.frag.h"
+#include "compose_plain.frag.h"
 #include "compose.vert.h"
 #include "r3d.frag.h"
 #include "r3d_few.frag.h"
+#include "r3d_plain.frag.h"
 #include "r3d_rt.frag.h"
 #include "r3d.vert.h"
 #include "rays.frag.h"
@@ -224,6 +226,12 @@ bool R3DRenderer::init(VkPresenter& vk, float supersample, int msaa, int aniso, 
         replace_slots_ = std::clamp(limit > R3D_OTHERS ? limit - R3D_OTHERS : 1u, 1u, TexturePack::MAX_SLOTS);
         overlay_slots_ = limit >= Pack2D::MAX_SLOTS + COMPOSE_OTHERS ? Pack2D::MAX_SLOTS : 1;
     }
+    if (!vk.descriptor_indexing()) {   // no arrays of pictures at all (the Raspberry Pi 5): the _plain shaders
+        no_indexing_ = few_images_ = true;
+        update_after_bind_ = false;
+        replace_slots_ = overlay_slots_ = 1;
+        printf("[vulkan] no descriptor indexing: no texture pack nor 2D replacement pictures\n");
+    }
     if (update_after_bind_ || few_images_)
         printf("[vulkan] %u images per shader%s: texture pack %u slots, 2D replacements %s\n", limit,
                update_after_bind_ ? " (update after bind)" : "", replace_slots_ - 1, overlay_slots_ > 1 ? "on" : "off");
@@ -312,9 +320,11 @@ bool R3DRenderer::init(VkPresenter& vk, float supersample, int msaa, int aniso, 
     };
     const uint32_t r3d_bindings = rt_.ready() ? 8 : 6;
     // Replacement slots are filled while earlier frames may still be in flight
+    // (without descriptor indexing: none, and every slot is written once at the start)
     const VkDescriptorBindingFlags array_flags =
-        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-        (update_after_bind_ ? VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT : 0);
+        no_indexing_ ? 0
+                     : VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                           (update_after_bind_ ? VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT : 0);
     VkDescriptorBindingFlags bflags[8] = {0, array_flags, 0, 0, 0, 0, 0, 0};
     VkDescriptorSetLayoutBindingFlagsCreateInfo bfi{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
     bfi.bindingCount = r3d_bindings;
@@ -478,6 +488,12 @@ bool R3DRenderer::init(VkPresenter& vk, float supersample, int msaa, int aniso, 
     pli.pPushConstantRanges = &apr;
     if (vkCreatePipelineLayout(dev_, &pli, nullptr, &ao_layout_) != VK_SUCCESS) return fail("the AO pipeline layout");
 
+    if (no_indexing_) {   // nothing may be left unwritten: a clear pixel in the one slot of each array, and for the text atlas
+        const std::vector<uint8_t> clear(4, 0);
+        upload_slot(r3d_set_, 1, replace_sampler_, 0, 1, 1, clear);
+        upload_slot(compose_set_, 3, overlay_sampler_, 0, 1, 1, clear, true);
+        upload_slot(compose_set_, 5, overlay_sampler_, 0, 1, 1, clear);
+    }
     return create_pipelines();
 }
 
@@ -606,11 +622,13 @@ bool R3DRenderer::create_pipelines() {
     // With ray queries the 3D pass can also trace the sun shadows
     // (with image arrays too small for the full texture pack: the _few ones, sized in make_pipeline)
     VkShaderModule r3d_fs = rt_.ready()    ? make_module(dev_, spv_r3d_rt_frag, sizeof(spv_r3d_rt_frag))
+                            : no_indexing_ ? make_module(dev_, spv_r3d_plain_frag, sizeof(spv_r3d_plain_frag))
                             : few_images_ ? make_module(dev_, spv_r3d_few_frag, sizeof(spv_r3d_few_frag))
                                           : make_module(dev_, spv_r3d_frag, sizeof(spv_r3d_frag));
     VkShaderModule c_vs = make_module(dev_, spv_compose_vert, sizeof(spv_compose_vert));
-    VkShaderModule c_fs = few_images_ ? make_module(dev_, spv_compose_few_frag, sizeof(spv_compose_few_frag))
-                                      : make_module(dev_, spv_compose_frag, sizeof(spv_compose_frag));
+    VkShaderModule c_fs = no_indexing_  ? make_module(dev_, spv_compose_plain_frag, sizeof(spv_compose_plain_frag))
+                          : few_images_ ? make_module(dev_, spv_compose_few_frag, sizeof(spv_compose_few_frag))
+                                        : make_module(dev_, spv_compose_frag, sizeof(spv_compose_frag));
     VkShaderModule b_fs = make_module(dev_, spv_bloom_frag, sizeof(spv_bloom_frag));
     VkShaderModule rays_fs = make_module(dev_, spv_rays_frag, sizeof(spv_rays_frag));
     VkShaderModule ao_fs = rt_.ready() ? make_module(dev_, spv_ao_rt_frag, sizeof(spv_ao_rt_frag))

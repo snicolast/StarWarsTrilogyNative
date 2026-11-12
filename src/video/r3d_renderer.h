@@ -216,6 +216,7 @@ private:
     // limits; the _few shaders take the sizes as specialisation constants 0 and 1
     uint32_t replace_slots_ = 4096, overlay_slots_ = 64;
     bool update_after_bind_ = false, few_images_ = false;
+    bool no_indexing_ = false;   // no descriptor indexing (VkPresenter::descriptor_indexing)
     const R3DScene* scene_ = nullptr;
 
     Image text_cells_;   // per 8x8 cell of the foreground: high-resolution text slot and colours

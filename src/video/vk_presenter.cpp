@@ -293,17 +293,22 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     std::vector<const char*> dev_ext;
     for (auto& e : dev_names) dev_ext.push_back(e.c_str());
     VkPhysicalDeviceVulkan12Features f12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    // Texture pack: an array of replacement images indexed per polygon
-    f12.descriptorBindingPartiallyBound = VK_TRUE;
-    f12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-    f12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-    {   // GPUs that take only a few images per shader take more in update-after-bind sets (r3d_renderer.cpp)
+    {
         VkPhysicalDeviceVulkan12Features have{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         VkPhysicalDeviceFeatures2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
         query.pNext = &have;
         vkGetPhysicalDeviceFeatures2(gpu_, &query);
-        update_after_bind_ = have.descriptorBindingSampledImageUpdateAfterBind;
-        f12.descriptorBindingSampledImageUpdateAfterBind = have.descriptorBindingSampledImageUpdateAfterBind;
+        // Texture pack: an array of replacement images indexed per polygon. Not
+        // on every GPU (Mesa's v3dv on the Raspberry Pi 5): the renderer then
+        // goes without the replacement pictures (SWT_NO_DESCRIPTOR_INDEXING tries that here)
+        descriptor_indexing_ = have.descriptorBindingPartiallyBound && have.descriptorBindingUpdateUnusedWhilePending &&
+                               have.shaderSampledImageArrayNonUniformIndexing && !getenv("SWT_NO_DESCRIPTOR_INDEXING");
+        f12.descriptorBindingPartiallyBound = descriptor_indexing_;
+        f12.descriptorBindingUpdateUnusedWhilePending = descriptor_indexing_;
+        f12.shaderSampledImageArrayNonUniformIndexing = descriptor_indexing_;
+        // GPUs that take only a few images per shader take more in update-after-bind sets (r3d_renderer.cpp)
+        update_after_bind_ = descriptor_indexing_ && have.descriptorBindingSampledImageUpdateAfterBind;
+        f12.descriptorBindingSampledImageUpdateAfterBind = update_after_bind_;
     }
     if (with_ngx) {   // NGX reads its own buffers through device addresses
         VkPhysicalDeviceVulkan12Features have{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};

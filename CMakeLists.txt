@@ -76,6 +76,18 @@ foreach(name r3d compose)
         COMMENT "Shader ${name}.frag (few images)")
     list(APPEND SHADER_HEADERS ${out})
 endforeach()
+# Again with one picture per array and no descriptor indexing, for GPUs
+# without it (Mesa's v3dv, the Raspberry Pi 5): r3d_plain.frag.h, compose_plain.frag.h
+foreach(name r3d compose)
+    set(out ${SHADER_OUT}/${name}_plain.frag.h)
+    add_custom_command(OUTPUT ${out}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT}
+        COMMAND glslang-standalone -V --target-env vulkan1.2 ${SHADER_DEFINES} -DFEW_IMAGES -DNO_INDEXING --vn spv_${name}_plain_frag --depfile ${out}.d -o ${out} ${SHADER_DIR}/${name}.frag
+        DEPENDS ${SHADER_DIR}/${name}.frag glslang-standalone
+        DEPFILE ${out}.d
+        COMMENT "Shader ${name}.frag (no descriptor indexing)")
+    list(APPEND SHADER_HEADERS ${out})
+endforeach()
 add_custom_target(shaders DEPENDS ${SHADER_HEADERS})
 
 # SDL3, for the gamepads only (no window, sound or rendering of its own; on

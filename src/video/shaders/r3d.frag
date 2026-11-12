@@ -1,6 +1,13 @@
 #version 460
-#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
+#ifdef NO_INDEXING
+// GPUs without descriptor indexing (r3d_renderer.cpp; the Raspberry Pi 5): the
+// arrays hold one picture, never picked by a variable
+#define NONUNIFORM(i) 0
+#else
+#extension GL_EXT_nonuniform_qualifier : require
+#define NONUNIFORM(i) nonuniformEXT(i)
+#endif
 #ifdef RAY_TRACING
 #extension GL_EXT_ray_query : require
 #endif
@@ -190,7 +197,7 @@ vec4 sample_texture(vec2 duv_dx, vec2 duv_dy) {
         vec2 u = uv;
         if ((flags & MIRROR_U) != 0u) { float m = mod(u.x, 2.0); u.x = m > 1.0 ? 2.0 - m : m; }
         if ((flags & MIRROR_V) != 0u) { float m = mod(u.y, 2.0); u.y = m > 1.0 ? 2.0 - m : m; }
-        return textureGrad(replacements[nonuniformEXT(replace)], u, duv_dx, duv_dy);
+        return textureGrad(replacements[NONUNIFORM(replace)], u, duv_dx, duv_dy);
     }
     ivec2 base = ivec2(int(tex & 2047u), int((tex >> 11) & 2047u));
     ivec2 size = ivec2(32 << int((tex >> 22) & 7u), 32 << int((tex >> 25) & 7u));
@@ -234,7 +241,7 @@ vec4 sample_texture(vec2 duv_dx, vec2 duv_dy) {
 float relief_height(vec2 offset, vec2 duv_dx, vec2 duv_dy, int level) {
     vec4 s;
     if (replace != 0u) {
-        s = textureGrad(replacements[nonuniformEXT(replace)], uv + offset, duv_dx, duv_dy);
+        s = textureGrad(replacements[NONUNIFORM(replace)], uv + offset, duv_dx, duv_dy);
     } else {
         ivec2 base = ivec2(int(tex & 2047u), int((tex >> 11) & 2047u));
         ivec2 size = ivec2(32 << int((tex >> 22) & 7u), 32 << int((tex >> 25) & 7u));
@@ -251,7 +258,7 @@ vec3 relief_normal(vec3 n, float h0, vec3 dpx, vec3 dpy, vec2 duv_dx, vec2 duv_d
     float nl = length(n);
     if (strength <= 0.0 || nl <= 0.0) return n;
     vec3 N = n / nl;
-    vec2 size = replace != 0u ? vec2(textureSize(replacements[nonuniformEXT(replace)], 0))
+    vec2 size = replace != 0u ? vec2(textureSize(replacements[NONUNIFORM(replace)], 0))
                               : vec2(32 << int((tex >> 22) & 7u), 32 << int((tex >> 25) & 7u));
     // One step = the pixel's footprint (at least a texel), at the matching mip level
     vec2 footprint = max(abs(duv_dx), abs(duv_dy)) * size;
