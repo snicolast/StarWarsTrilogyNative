@@ -25,6 +25,8 @@ public:
     void set_credit(const std::wstring& line1, const std::wstring& line2, bool shown) {
         credit_[0] = line1, credit_[1] = line2, credit_on_ = shown;
     }
+    // A frame counter at the top in the middle ("60 FPS"); empty hides it
+    void set_fps(const std::wstring& text) { fps_ = text; }
     // Redraws into `out` when the picture changes; true if it did. `now` in seconds
     bool draw(int w, int h, double now, std::vector<uint32_t>& out);
 
@@ -42,6 +44,7 @@ private:
     void shine(int x0, int y0, int x1, int y1, float pos);
     void chime();
     RECT draw_credit(float alpha);
+    RECT draw_fps();
 
     struct Notice { std::wstring name, text; };
     std::deque<Notice> queue_;
@@ -55,6 +58,8 @@ private:
     float credit_alpha_ = 0;     // fades towards credit_on_
     double credit_at_ = -1;      // the last draw's time, for the fade
     RECT credit_dirty_{};        // where the credit was drawn
+    std::wstring fps_, fps_drawn_;   // the counter asked for, and the one in the picture
+    RECT fps_dirty_{};               // where it was drawn
 
     std::vector<HANDLE> font_handles_;
     std::vector<std::vector<char>> font_data_;

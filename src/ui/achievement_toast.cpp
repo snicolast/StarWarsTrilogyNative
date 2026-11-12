@@ -257,6 +257,23 @@ RECT AchievementToast::draw_credit(float alpha) {
             std::clamp(y2 + px2 * 2 + m, 0, h_)};
 }
 
+// SHOW FPS: small, at the top in the middle (clear of the HUD in every
+// aspect), on a dark plate so it reads over the snow of Hoth too
+RECT AchievementToast::draw_fps() {
+    float u = std::min(h_ / 1080.0f, w_ / 1440.0f);
+    auto U = [&](float v) { return std::max(1, int(v * u + 0.5f)); };
+    int px = U(26), x = w_ / 2, y = U(14);
+    const Mask& m = mask(TEXT, px, fps_);
+    int pad = U(10);
+    RECT r{std::clamp(x - m.text_w / 2 - pad, 0, w_), std::clamp(y - pad / 2, 0, h_),
+           std::clamp(x + m.text_w / 2 + pad, 0, w_), std::clamp(y + px + pad, 0, h_)};
+    fill(r.left, r.top, r.right, r.bottom, 0x040914, 0.6f);
+    text(TEXT, px, fps_, x, y, 1, PALE_TOP, PALE_BOTTOM, 0.95f);
+    int s = U(10);   // the letters' shadow reaches a little past the plate
+    return {std::max(0, int(r.left) - s), std::max(0, int(r.top) - s), std::min(w_, int(r.right) + s),
+            std::min(h_, int(r.bottom) + s)};
+}
+
 bool AchievementToast::draw(int w, int h, double now, std::vector<uint32_t>& out) {
     while (!queue_.empty() && shown_at_ >= 0 && now - shown_at_ > SHOW_SECONDS) {   // the next one
         queue_.pop_front();
@@ -282,19 +299,22 @@ bool AchievementToast::draw(int w, int h, double now, std::vector<uint32_t>& out
         bool moving = t < SHINE_AT + SHINE_TIME || t > SHOW_SECONDS - SLIDE_OUT;
         toast_redraw = moving || !drawn_;   // resting in its corner: nothing to do
     }
-    if (!resized && !credit_changed && !toast_redraw) return false;
+    bool fps_changed = fps_ != fps_drawn_;
+    if (!resized && !credit_changed && !toast_redraw && !fps_changed) return false;
     if (resized) {
         w_ = w, h_ = h;
         out.assign(size_t(w) * h, 0);
     } else {   // wipe only where the panel and the credit were
-        for (const RECT& r : {dirty_, credit_dirty_})
+        for (const RECT& r : {dirty_, credit_dirty_, fps_dirty_})
             for (LONG y = r.top; y < r.bottom; y++)
                 std::fill(out.begin() + y * w_ + r.left, out.begin() + y * w_ + r.right, 0u);
     }
     px_ = out.data();
-    dirty_ = credit_dirty_ = {};
+    dirty_ = credit_dirty_ = fps_dirty_ = {};
     drawn_ = false;
     if (credit_alpha_ > 0) credit_dirty_ = draw_credit(credit_alpha_);
+    fps_drawn_ = fps_;
+    if (!fps_.empty()) fps_dirty_ = draw_fps();
     if (queue_.empty()) return true;
     float u = std::min(h / 1080.0f, w / 1440.0f);
     auto U = [&](float v) { return int(v * u + 0.5f); };

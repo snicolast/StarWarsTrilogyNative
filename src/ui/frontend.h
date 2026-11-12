@@ -38,6 +38,7 @@ struct FrontendSettings {
 #endif
     int supersample = 100;   // the 3D drawn at this % of the window and scaled down (the macOS and Linux menu: 100, 150, 200)
     bool haze = true;  // distance haze
+    bool show_fps = false;   // the frames shown each second, at the top of the screen
     int bloom = 2;     // glow around bright things: 0 off, 1 low, 2 medium, 3 high
     bool ao = true;    // ambient occlusion
     bool sky = true;   // procedural sky instead of the original picture
@@ -140,7 +141,7 @@ private:
         RECORDS, DEBUG, DEBUG_STAGE, DEBUG_PHASE,
         OPT_QUALITY, OPT_DISPLAY, OPT_VOLUME, OPT_MUSIC, OPT_SPEAKERS, OPT_REAR, OPT_SAMPLES, OPT_AA, OPT_HAZE, OPT_BLOOM, OPT_AO, OPT_SKY, OPT_SUN, OPT_SHADOWS, OPT_SHAFTS, OPT_SOFT, OPT_HDR, OPT_RELIEF, OPT_SHARPEN, OPT_TEXT, OPT_CROSS, OPT_MICE,
         OPT_SAT, OPT_GAMMA, OPT_MOTION, OPT_PAD_SPEED, OPT_GYRO, OPT_GYRO_SPEED, OPT_VIBRATION, OPT_ASSIST, OPT_RT, OPT_MENU_MUSIC, EXTRA, DOGFIGHT, OPT_POINTER, OPT_SIGHT, OPT_PAD_AIM, OPT_PAD_INVERT, OPT_DUEL_INVERT, OPT_UPDATES, OPT_SCALE,
-        OPT_ASPECT, OPT_EXPLOSIONS,
+        OPT_ASPECT, OPT_EXPLOSIONS, OPT_FPS,
     };
     struct Item {
         Id id;

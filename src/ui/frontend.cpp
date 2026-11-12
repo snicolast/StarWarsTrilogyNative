@@ -198,6 +198,7 @@ void FrontendSettings::load(const char* path) {
         else if (k == "aa") aa = v == "dlaa" || v == "msaa8" ? 1 : (v == "none" || v == "off") ? 2 : 0;
         else if (k == "supersample") supersample = atoi(value) >= 200 ? 200 : atoi(value) >= 150 ? 150 : 100;
         else if (k == "haze") haze = on;
+        else if (k == "show_fps") show_fps = on;
         else if (k == "bloom") bloom = v == "low" ? 1 : v == "medium" ? 2 : v == "high" ? 3 : on ? 2 : 0;
         else if (k == "ao") ao = on;
         else if (k == "sky") sky = v == "procedural";
@@ -260,6 +261,7 @@ void FrontendSettings::save(const char* path) const {
 #ifndef _WIN32
     fprintf(f, "supersample = %d\n", supersample);
 #endif
+    fprintf(f, "show_fps = %d\n", show_fps);
     fprintf(f, "check_updates = %d\nnews_seen = %d\n", check_updates, news_seen);
     fclose(f);
 }
@@ -384,7 +386,7 @@ const wchar_t* const Frontend::TAB_NAMES[Frontend::TAB_COUNT] = {L"DISPLAY", L"G
 // soft particles, surface detail).
 // Tabs past VISIBLE_OPTIONS rows scroll.
 const Frontend::OptionTab Frontend::OPTION_TABS[] = {
-    {OPT_QUALITY, DISPLAY_TAB}, {OPT_DISPLAY, DISPLAY_TAB}, {OPT_ASPECT, DISPLAY_TAB}, {OPT_MOTION, DISPLAY_TAB}, {OPT_AA, DISPLAY_TAB}, {OPT_SCALE, DISPLAY_TAB},
+    {OPT_QUALITY, DISPLAY_TAB}, {OPT_DISPLAY, DISPLAY_TAB}, {OPT_ASPECT, DISPLAY_TAB}, {OPT_MOTION, DISPLAY_TAB}, {OPT_FPS, DISPLAY_TAB}, {OPT_AA, DISPLAY_TAB}, {OPT_SCALE, DISPLAY_TAB},
     {OPT_SAT, DISPLAY_TAB}, {OPT_GAMMA, DISPLAY_TAB}, {OPT_SHARPEN, DISPLAY_TAB}, {OPT_UPDATES, DISPLAY_TAB},
     {OPT_SUN, LIGHTING_TAB}, {OPT_SHADOWS, LIGHTING_TAB}, {OPT_RT, LIGHTING_TAB}, {OPT_HDR, LIGHTING_TAB},
     {OPT_AO, LIGHTING_TAB}, {OPT_BLOOM, LIGHTING_TAB}, {OPT_EXPLOSIONS, LIGHTING_TAB}, {OPT_HAZE, LIGHTING_TAB},
@@ -528,6 +530,8 @@ std::vector<Frontend::Item> Frontend::items() const {
                 {OPT_ASPECT, L"WIDESCREEN", ASPECT_NAMES[settings.aspect], ASPECT_HINTS[settings.aspect]},
                 {OPT_MOTION, L"MOTION", settings.smooth ? L"SMOOTH" : L"ORIGINAL",
                  L"Smooth: the 3D is also drawn between the game's 57.5 frames, at your monitor's refresh rate"},
+                {OPT_FPS, L"SHOW FPS", on_off(settings.show_fps),
+                 L"The frames drawn each second, at the top of the screen (at most your monitor's refresh rate)"},
                 {OPT_VOLUME, L"EFFECTS", std::to_wstring(settings.volume), L"Volume of the sound effects and voices"},
                 {OPT_MUSIC, L"MUSIC", std::to_wstring(settings.music), L"Volume of the music"},
                 {OPT_MENU_MUSIC, L"MENU MUSIC", on_off(settings.menu_music),
@@ -717,6 +721,7 @@ void Frontend::activate(const Item& it, int dir) {
         push(Action::SettingsChanged);
         break;
     case OPT_HAZE: settings.haze = !settings.haze; push(Action::SettingsChanged); break;
+    case OPT_FPS: settings.show_fps = !settings.show_fps; push(Action::SettingsChanged); break;
     case OPT_BLOOM: settings.bloom = (settings.bloom + dir + 4) % 4; push(Action::SettingsChanged); break;
     case OPT_AO: settings.ao = !settings.ao; push(Action::SettingsChanged); break;
     case OPT_SKY: settings.sky = !settings.sky; push(Action::SettingsChanged); break;

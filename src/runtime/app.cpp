@@ -508,6 +508,7 @@ int main(int argc, char** argv) {
     uint64_t shown = ~0ull, presents = 0;
     double scene_total = 0;   // seconds of 2D composition and scene building since the last title
     ULONGLONG last_title = GetTickCount64();
+    unsigned display_fps = 0;   // presents in the last second (SHOW FPS)
 
     // PC front end: main menu at launch, pause menu on Esc
     Frontend frontend;
@@ -930,6 +931,10 @@ int main(int argc, char** argv) {
             toast.set_credit(L"PC port by snicolast",
                              L"github.com/snicolast/StarWarsTrilogyNative",
                              g_in_attract && !g_menu_open && !g_boot_skip && !g_arcade_entry);
+            // SHOW FPS in the options; SWT_SHOW_FPS shows it without the menus too (--no-menu, tests)
+            static const bool fps_env = getenv("SWT_SHOW_FPS") != nullptr;
+            bool show_fps = fps_env || (g_opt.menu && frontend.settings.show_fps);
+            toast.set_fps(show_fps && display_fps ? std::to_wstring(display_fps) + L" FPS" : std::wstring());
             RECT rc;
             GetClientRect(presenter.hwnd(), &rc);
             if (toast.draw(rc.right, rc.bottom, qpc_seconds(), toast_pixels))
@@ -1407,6 +1412,7 @@ int main(int argc, char** argv) {
         scene_total += scene_seconds;
         ULONGLONG now = GetTickCount64();
         if (now - last_title >= 1000) {
+            display_fps = unsigned((presents * 1000 + (now - last_title) / 2) / (now - last_title));
             // Where the time goes, in ms per frame: the game thread (CPU, without
             // its waits), the preparation thread (per game frame), this thread's
             // scene work and command recording, and the time blocked on the GPU
