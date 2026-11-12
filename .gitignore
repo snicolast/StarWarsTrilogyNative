@@ -16,3 +16,7 @@ third_party/downloads/
 # Jurassic Park font: free for personal use, not redistributed
 third_party/fonts/Jurassic_Park.ttf
 third_party/menu/
+/StarWarsTrilogy
+dist/
+swtrilgy.zip
+roms/

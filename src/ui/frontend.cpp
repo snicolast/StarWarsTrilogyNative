@@ -16,7 +16,7 @@
 
 #include <wincodec.h>
 
-#ifdef __APPLE__
+#ifndef _WIN32
 #include "../platform/mac/platform_mac.h"
 #include "../video/image_io.h"
 #endif
@@ -74,7 +74,7 @@ std::wstring widen(const std::string& s) {   // UTF-8
     return w;
 }
 
-#ifdef __APPLE__
+#ifndef _WIN32
 bool https_get(const wchar_t* host, const wchar_t* path, std::string& body) { return mac_https_get(host, path, body); }
 #else
 #ifndef WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
@@ -318,7 +318,7 @@ bool Frontend::load_poster(const std::wstring& path) { return load_image(path, p
 
 // Any picture format Windows can read (WIC), as BGRA with straight alpha
 bool Frontend::load_image(const std::wstring& path, std::vector<uint32_t>& px, int& w_out, int& h_out) {
-#ifdef __APPLE__
+#ifndef _WIN32
     std::vector<uint8_t> rgba;
     if (!png_load(std::string(path.begin(), path.end()), w_out, h_out, rgba)) {   // the project's paths are ASCII
         px.clear();
@@ -1014,6 +1014,9 @@ void Frontend::draw_news() {
     const wchar_t* about = news_button_ == 0
 #ifdef __APPLE__
                                ? L"Opens the game's page: download the new version there and run build_mac.sh"
+                               : L"Back to the menu.  This news will not show again";
+#elif !defined(_WIN32)
+                               ? L"Opens the game's page: get the new version there (git pull) and run build_linux.sh"
                                : L"Back to the menu.  This news will not show again";
 #else
                                ? L"Closes the game, downloads the new version, builds it again (update.bat) and starts it"

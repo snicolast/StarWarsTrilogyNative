@@ -222,6 +222,8 @@ bool load_game_rom(std::vector<uint8_t>& sound_program, std::vector<uint8_t>& so
                         "Your swtrilgy.zip is probably an older set that lacks that chip. Get a current,\n"
 #ifdef __APPLE__
                         "complete swtrilgy.zip (Rev. A), put it next to build_mac.sh and run build_mac.sh again.";
+#elif !defined(_WIN32)
+                        "complete swtrilgy.zip (Rev. A), put it next to build_linux.sh and run build_linux.sh again.";
 #else
                         "complete swtrilgy.zip (Rev. A), put it next to build.bat and run build.bat again.";
 #endif
@@ -265,6 +267,10 @@ bool load_game_rom(std::vector<uint8_t>& sound_program, std::vector<uint8_t>& so
     }
 #ifdef __APPLE__
     error += "\nRun build_mac.sh with your swtrilgy.zip, or give its path with\n"
+             "  ./StarWarsTrilogy --rom ~/roms/swtrilgy.zip\n"
+             "or in the SWT_ROM_ZIP environment variable.";
+#elif !defined(_WIN32)
+    error += "\nRun build_linux.sh with your swtrilgy.zip, or give its path with\n"
              "  ./StarWarsTrilogy --rom ~/roms/swtrilgy.zip\n"
              "or in the SWT_ROM_ZIP environment variable.";
 #else

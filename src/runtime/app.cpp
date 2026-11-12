@@ -53,7 +53,7 @@
 #include "../video/tilegen.h"
 #include "../video/ui_overlay.h"
 #include "../video/vk_presenter.h"
-#ifdef __APPLE__
+#ifndef _WIN32
 #include "../platform/mac/platform_mac.h"
 #endif
 #include "app_internal.h"
@@ -182,7 +182,7 @@ static void pacing_sample(double now, double display, double shown, const R3DFra
     }
 }
 
-#ifndef __APPLE__
+#ifdef _WIN32
 // The game is a windowed program (no console window of its own). Started from
 // a terminal, its log goes to that terminal; redirected to a file or a pipe
 // (the tests), it goes there as it always did
@@ -200,12 +200,14 @@ static void attach_parent_console() {
 #endif
 
 int main(int argc, char** argv) {
-#ifndef __APPLE__
+#ifdef _WIN32
     attach_parent_console();
 #endif
     setvbuf(stdout, nullptr, _IONBF, 0);   // keep logs even if the process dies
-#ifdef __APPLE__
+#ifndef _WIN32
     mac_enter_game_folder();
+#endif
+#ifdef __APPLE__
     // Both cost almost nothing on Apple's GPUs (--msaa and --aniso still win)
     g_opt.msaa = 8;
     g_opt.aniso = 16;
@@ -1076,7 +1078,7 @@ int main(int argc, char** argv) {
                 if (!music_tried) {
                     music_tried = true;
                     bool found = music.open();
-#ifndef __APPLE__   // Windows: through the game's own output; the Mac has its own player
+#ifndef __APPLE__   // Windows and Linux: through the game's own output; the Mac has its own player
                     if (found)
                         g_audio.set_extra([](void* m, float* out, size_t frames, int channels, int rate) {
                             static_cast<MenuMusic*>(m)->mix(out, frames, channels, rate);

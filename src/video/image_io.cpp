@@ -1,14 +1,14 @@
 #include "image_io.h"
 
 #include <windows.h>
-#ifndef __APPLE__
+#ifdef _WIN32
 #include <wincodec.h>
 #endif
 
 #include <cstdio>
 #include <utility>
 
-#ifndef __APPLE__   // src/platform/mac/image_io_mac.mm
+#ifdef _WIN32   // src/platform/mac/image_io_mac.mm, src/platform/linux/image_io_linux.cpp
 namespace {
 
 IWICImagingFactory* wic() {

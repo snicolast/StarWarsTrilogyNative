@@ -1,4 +1,4 @@
-// Window (Win32; SDL3 on macOS: src/platform/mac/vk_window_mac.cpp) + Vulkan 1.3
+// Window (Win32; SDL3 on macOS and Linux: src/platform/*/vk_window_*.cpp) + Vulkan 1.3
 // device + swapchain. Each frame calls a function that records the draw
 // commands onto the swapchain image.
 #pragma once
@@ -17,7 +17,7 @@
 #ifndef VK_USE_PLATFORM_METAL_EXT
 #define VK_USE_PLATFORM_METAL_EXT
 #endif
-#else
+#elif defined(_WIN32)   // Linux: SDL makes the surface, nothing of the window system here
 #ifndef VK_USE_PLATFORM_WIN32_KHR
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
@@ -105,12 +105,15 @@ public:
 private:
     bool create_swapchain();
     void destroy_swapchain();
-#ifdef __APPLE__
+#ifndef _WIN32
     bool create_window(const char* title, int width, int height);
     bool load_vulkan();
     bool create_surface();
     void destroy_window();
     float wheel_ = 0;   // a trackpad's fractions of a wheel notch
+#ifndef __APPLE__
+    static std::vector<std::string> surface_extensions();   // what SDL needs for this window system
+#endif
 #else
     static LRESULT CALLBACK wndproc(HWND, UINT, WPARAM, LPARAM);
     WINDOWPLACEMENT placement_{sizeof(WINDOWPLACEMENT)};

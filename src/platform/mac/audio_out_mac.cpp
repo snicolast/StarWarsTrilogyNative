@@ -1,12 +1,13 @@
-// macOS: AudioOut (audio_out.h) through SDL3, which follows the default output
-// by itself (headphones plugged in, etc.). The stream's rate is the device's,
-// so the resampling stays ours, in AudioStream.
+// macOS and Linux: AudioOut (audio_out.h) through SDL3, which follows the
+// default output by itself (headphones plugged in, etc.). The stream's rate is
+// the device's, so the resampling stays ours, in AudioStream.
 #include "audio_out.h"
 
 #include <SDL3/SDL.h>
 #include <unistd.h>
 
 #include <cstdio>
+#include <functional>
 #include <vector>
 
 namespace {
@@ -16,6 +17,8 @@ struct Playing {
     AudioStream::Speakers mode;
     int channels;
     std::vector<float> buffer;
+    int rate = 0;
+    std::function<void(float*, size_t, int, int)> extra;   // AudioOut::set_extra's (Linux: the menus' music)
 };
 
 void SDLCALL fill(void* user, SDL_AudioStream* out, int additional, int) {
@@ -24,6 +27,7 @@ void SDLCALL fill(void* user, SDL_AudioStream* out, int additional, int) {
     if (!frames) return;
     p->buffer.resize(frames * size_t(p->channels));
     p->stream->pull(p->buffer.data(), frames, p->mode);
+    if (p->extra) p->extra(p->buffer.data(), frames, p->channels, p->rate);
     SDL_PutAudioStreamData(out, p->buffer.data(), int(p->buffer.size() * sizeof(float)));
 }
 
@@ -67,6 +71,10 @@ bool AudioOut::play_default_device() {
     spec.format = SDL_AUDIO_F32;
     spec.channels = playing.channels;
     stream_.set_output_rate(spec.freq);
+    playing.rate = spec.freq;
+    playing.extra = [this](float* out, size_t frames, int channels, int rate) {
+        if (Extra fn = extra_.load()) fn(extra_user_.load(), out, frames, channels, rate);
+    };
     SDL_AudioStream* out = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, fill, &playing);
     if (!out) return false;
     SDL_ResumeAudioStreamDevice(out);

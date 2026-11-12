@@ -1,0 +1,2 @@
+stb_image.h v2.30 and stb_image_write.h v1.16 from https://github.com/nothings/stb
+commit 2a34860c372bc520e1521c6aa7e3e4b4138c76f8 (2026-10-14; public domain or MIT, see the end of each file)

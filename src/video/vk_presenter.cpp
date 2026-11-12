@@ -53,7 +53,7 @@ uint32_t VkPresenter::find_memory(uint32_t type_bits, VkMemoryPropertyFlags flag
     return UINT32_MAX;
 }
 
-#ifndef __APPLE__
+#ifdef _WIN32
 LRESULT CALLBACK VkPresenter::wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     auto* self = reinterpret_cast<VkPresenter*>(GetWindowLongPtrA(hwnd, GWLP_USERDATA));
     if (self && self->input_hook) {
@@ -121,7 +121,7 @@ void VkPresenter::toggle_fullscreen() {
 #endif
 
 bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) {
-#ifdef __APPLE__
+#ifndef _WIN32
     if (!create_window(title, width, height) || !load_vulkan()) return false;
 #else
     HINSTANCE inst = GetModuleHandleA(nullptr);
@@ -147,6 +147,8 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     app.apiVersion = VK_API_VERSION_1_3;
 #ifdef __APPLE__
     std::vector<std::string> inst_names = {VK_KHR_SURFACE_EXTENSION_NAME, VK_EXT_METAL_SURFACE_EXTENSION_NAME};
+#elif !defined(_WIN32)
+    std::vector<std::string> inst_names = surface_extensions();
 #else
     std::vector<std::string> inst_names = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
 #endif
@@ -169,7 +171,7 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     if (!check(vkCreateInstance(&ici, nullptr, &instance_), "vkCreateInstance")) return false;
     volkLoadInstance(instance_);
 
-#ifdef __APPLE__
+#ifndef _WIN32
     if (!create_surface()) return false;
 #else
     VkWin32SurfaceCreateInfoKHR sci{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
@@ -423,7 +425,7 @@ void VkPresenter::destroy_swapchain() {
     swapchain_ = VK_NULL_HANDLE;
 }
 
-#ifndef __APPLE__
+#ifdef _WIN32
 bool VkPresenter::pump() {
     MSG msg;
     while (PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -591,7 +593,7 @@ void VkPresenter::shutdown() {
     }
     if (surface_) vkDestroySurfaceKHR(instance_, surface_, nullptr);
     if (instance_) vkDestroyInstance(instance_, nullptr);
-#ifdef __APPLE__
+#ifndef _WIN32
     destroy_window();
 #else
     if (hwnd_) DestroyWindow(hwnd_);

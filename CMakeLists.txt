@@ -77,8 +77,8 @@ endforeach()
 add_custom_target(shaders DEPENDS ${SHADER_HEADERS})
 
 # SDL3, for the gamepads only (no window, sound or rendering of its own; on
-# macOS the window, the mouse and keyboard and the sound too): downloaded once
-# at configure time and linked statically
+# macOS and Linux the window, the mouse and keyboard and the sound too):
+# downloaded once at configure time and linked statically
 include(FetchContent)
 # SDL3 and miniz (third_party/deps.txt: file, URL, SHA256). build.bat downloads
 # them first into third_party/downloads (tools/get_deps.bat, with retries); a
@@ -103,7 +103,7 @@ set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 set(SDL_UNUSED GPU RENDER CAMERA POWER DIALOG TRAY)
-if(NOT APPLE)
+if(WIN32)
     list(APPEND SDL_UNUSED AUDIO VIDEO)
 endif()
 foreach(sub ${SDL_UNUSED})
@@ -183,7 +183,7 @@ endforeach()
 if(WIN32 AND (DLSS_BRIDGE OR NOT MSVC))
     set(DLSS_SOURCE src/video/dlss_loader.cpp)
     set(DLSS_LIB "")
-elseif(NGX_OK)
+elseif(NGX_OK AND WIN32)   # the SDK's .lib: Windows only
     set(DLSS_SOURCE src/video/dlss.cpp)
     set(DLSS_LIB ${CMAKE_SOURCE_DIR}/third_party/ngx/lib/nvsdk_ngx_d.lib)
 else()
@@ -194,9 +194,22 @@ else()
     set(DLSS_LIB "")
 endif()
 
-# What each system does in its own way
+# What each system does in its own way. Linux shares the Mac's Win32 names
+# (src/platform/mac: windows.h, compat.h, SDL3 sound and mice) and has its own
+# window, text, pictures and splash video (src/platform/linux)
 set(MAC_DIR ${CMAKE_SOURCE_DIR}/src/platform/mac)
-if(APPLE)
+set(LINUX_DIR ${CMAKE_SOURCE_DIR}/src/platform/linux)
+if(UNIX AND NOT APPLE)
+    set(PLATFORM_SOURCES
+        ${LINUX_DIR}/win32_linux.cpp
+        ${LINUX_DIR}/vk_window_linux.cpp
+        ${LINUX_DIR}/image_io_linux.cpp
+        ${LINUX_DIR}/splash_video_linux.cpp
+        ${MAC_DIR}/raw_mice_mac.cpp
+        ${MAC_DIR}/audio_out_mac.cpp
+        src/video/dlss_stub.cpp
+        src/ui/menu_music.cpp)
+elseif(APPLE)
     set(PLATFORM_SOURCES
         ${MAC_DIR}/win32_mac.mm
         ${MAC_DIR}/vk_window_mac.cpp
@@ -323,6 +336,16 @@ if(APPLE)
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
     add_custom_command(TARGET StarWarsTrilogy POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MOLTENVK_DYLIB} $<TARGET_FILE_DIR:StarWarsTrilogy>/libMoltenVK.dylib)
+elseif(UNIX)
+    # Linux (x86_64, arm64): the Mac's Win32 names in every file, as there. As
+    # MSVC builds it: a*b+c stays two operations, memory of any type can be read
+    # as any other, integers wrap around, and char is signed (it is not on arm64)
+    find_package(Freetype REQUIRED)   # GDI's text (win32_linux.cpp)
+    find_package(CURL REQUIRED)       # the news check (UPDATE AVAILABLE)
+    target_include_directories(StarWarsTrilogy PRIVATE ${MAC_DIR} ${LINUX_DIR} src/audio src/ui third_party/stb)
+    target_compile_options(StarWarsTrilogy PRIVATE -ffp-contract=off -fno-strict-aliasing -fwrapv -fsigned-char
+        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include \"${MAC_DIR}/compat.h\">")
+    target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static Freetype::Freetype CURL::libcurl ${CMAKE_DL_LIBS} pthread)
 else()
     target_compile_definitions(StarWarsTrilogy PRIVATE VK_USE_PLATFORM_WIN32_KHR)
     target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static winmm ole32 oleaut32 windowscodecs mfplat mfuuid gdi32 dwmapi shell32 winhttp
@@ -380,9 +403,12 @@ if(LW_TESTS)
             target_compile_options(${t} PRIVATE /W4 /utf-8)
             target_compile_definitions(${t} PRIVATE _CRT_SECURE_NO_WARNINGS)
         endif()
-        if(APPLE)
+        if(NOT WIN32)
             target_compile_options(${t} PRIVATE -include ${MAC_DIR}/compat.h)
             target_include_directories(${t} PRIVATE ${MAC_DIR})
+        endif()
+        if(UNIX AND NOT APPLE)
+            target_compile_options(${t} PRIVATE -fsigned-char)
         endif()
     endforeach()
     add_test(NAME tilegen COMMAND tilegen_test ${CMAKE_SOURCE_DIR}/tests/tilegen_expected.txt)
