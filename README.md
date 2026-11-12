@@ -68,43 +68,7 @@ downloads, builds, updates and starts the game for you. No Visual Studio, nothin
 2. In the launcher, open **Star Wars Trilogy**, press **Install** and choose your `swtrilgy.zip` when it asks.
 3. Press **Play**.
 
-<details>
-<summary>Without the launcher: install.bat</summary>
-
-1. Download this repository (green **Code** button > **Download ZIP**) and unzip it.
-2. Put `swtrilgy.zip` in the folder.
-3. Double-click `install.bat`. It installs Python 3 and the Visual Studio 2022 C++ build tools
-   with winget (a few GB, accept the Windows prompt), then builds the game.
-4. Play with `StarWarsTrilogy.exe`.
-
-</details>
-
 On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by contributors).
-
-<details>
-<summary>Manual install</summary>
-
-Install [Python 3.10 or later](https://www.python.org/downloads/) and
-[Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
-with the *Desktop development with C++* workload. The full workload is over 6 GB; the build only
-needs the MSVC compiler, CMake and a Windows SDK. In a command prompt:
-
-```
-winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
-```
-
-Or in the Visual Studio Installer, choose *Individual components* instead of the workload and
-tick *MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)*, *C++ CMake tools for Windows*
-and one *Windows 11 SDK* (it works on Windows 10 too).
-
-Then run `build.bat` with `swtrilgy.zip` next to it (or pass its path: `build.bat D:\roms\swtrilgy.zip`).
-It downloads SDL3, miniz and NVIDIA DLSS on the first run. DLSS is optional: if that download
-fails, the game is built without it and uses MSAA.
-</details>
-
-If the build can't download SDL3 or miniz (a proxy, an antivirus, a flaky connection), it lists
-the links: download them with your browser, put them in `third_party\downloads\` keeping the file
-name and run `build.bat` again.
 
 ### Update
 
