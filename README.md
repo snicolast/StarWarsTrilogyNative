@@ -61,42 +61,20 @@ the game stops at *FAILED FEEDBACK LEVER INITIALIZE*. `build.bat` says which chi
 You need Windows 10/11 (64-bit) and a GPU with a Vulkan 1.3 driver (most from 2016 on).
 DLAA needs an NVIDIA RTX; on other cards it switches itself off, and the game builds the same on any GPU.
 
-1. Download this repository (green **Code** button > **Download ZIP**) and unzip it.
-2. Put `swtrilgy.zip` in the folder.
-3. Double-click `install.bat`. It installs Python 3 and the Visual Studio 2022 C++ build tools
-   with winget (a few GB, accept the Windows prompt), then builds the game.
-4. Play with `StarWarsTrilogy.exe`.
+Install it with **[NicoLauncher](https://github.com/snicolast/NicoLauncher-Hub)**, a free app that
+downloads, builds, updates and starts the game for you. No Visual Studio, nothing to set up by hand.
+
+1. Download **[NicoLauncher-setup.exe](https://github.com/snicolast/NicoLauncher-Hub/releases/latest)** and run it.
+2. In the launcher, open **Star Wars Trilogy**, press **Install** and choose your `swtrilgy.zip` when it asks.
+3. Press **Play**.
 
 On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by contributors).
 
-<details>
-<summary>Manual install</summary>
-
-Install [Python 3.10 or later](https://www.python.org/downloads/) and
-[Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
-with the *Desktop development with C++* workload. The full workload is over 6 GB; the build only
-needs the MSVC compiler, CMake and a Windows SDK. In a command prompt:
-
-```
-winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
-```
-
-Or in the Visual Studio Installer, choose *Individual components* instead of the workload and
-tick *MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)*, *C++ CMake tools for Windows*
-and one *Windows 11 SDK* (it works on Windows 10 too).
-
-Then run `build.bat` with `swtrilgy.zip` next to it (or pass its path: `build.bat D:\roms\swtrilgy.zip`).
-It downloads SDL3, miniz and NVIDIA DLSS on the first run. DLSS is optional: if that download
-fails, the game is built without it and uses MSAA.
-</details>
-
-If the build can't download SDL3 or miniz (a proxy, an antivirus, a flaky connection), it lists
-the links: download them with your browser, put them in `third_party\downloads\` keeping the file
-name and run `build.bat` again.
-
 ### Update
 
-When there is a new version, the main menu says what is new and offers **UPDATE NOW**. Or run
+With NicoLauncher: it tells you when there is something new. Press **Update**.
+
+Without it: when there is a new version, the main menu says what is new and offers **UPDATE NOW**. Or run
 `update.bat` yourself: it downloads the changed files from GitHub (no git needed) and rebuilds.
 Your ROM, settings and records are kept; files you edited are backed up to `out\update_backup\`.
 
