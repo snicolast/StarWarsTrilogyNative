@@ -1036,10 +1036,21 @@ int main(int argc, char** argv) {
             menu_was = frontend.screen();
             if (!frontend.active()) pad_in_menu = false;   // a menu opened later starts with the mouse
             {   // the menus' music: over the backdrop, not over a paused game nor during the splash
-                static MenuMusic music;
+                static MenuMusic& music = *new MenuMusic;   // never destroyed: the audio thread reads it to the end
                 static bool music_tried = false;
                 static double music_time = qpc_seconds();
-                if (!music_tried) music_tried = true, music.open();
+                if (!music_tried) {
+                    music_tried = true;
+                    bool found = music.open();
+#ifndef __APPLE__   // Windows: through the game's own output; the Mac has its own player
+                    if (found)
+                        g_audio.set_extra([](void* m, float* out, size_t frames, int channels, int rate) {
+                            static_cast<MenuMusic*>(m)->mix(out, frames, channels, rate);
+                        }, &music);
+#else
+                    (void)found;
+#endif
+                }
                 double t = qpc_seconds();
                 music.update(frontend.active() && !frontend.over_game() && !frontend.splash() && !frontend.starting &&
                                  frontend.settings.menu_music,

@@ -130,6 +130,8 @@ bool AudioOut::play_default_device() {
                 break;
             }
             stream_.pull(reinterpret_cast<float*>(data), room, now_mode);
+            if (Extra extra = extra_.load())
+                extra(extra_user_.load(), reinterpret_cast<float*>(data), room, channels, int(fmt.Format.nSamplesPerSec));
             render->ReleaseBuffer(room, 0);
         }
         if (GetTickCount64() - checked > 1000) {   // the user picked another default output
