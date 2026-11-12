@@ -50,7 +50,8 @@ of your own computers and run `./StarWarsTrilogy` in it. It holds your ROM's dat
 ## Compared with Windows
 
 - Ray tracing works as on Windows, with a driver that has ray queries (NVIDIA, recent AMD and Intel with Mesa).
-- No DLAA yet: picking it uses MSAA, as on a GPU without it.
+- No DLAA yet: picking it uses MSAA, as on a GPU without it. **Options > Display > Supersampling** (1.5x, 2x) draws the 3D
+  larger and scales it down, for smoother edges still on a fast GPU.
 - No splash video: the splash picture shows in its place.
 - One mouse: a second player uses a gamepad.
 - UPDATE NOW opens the game's page: update the folder (`git pull`) and run `build_linux.sh` again.
