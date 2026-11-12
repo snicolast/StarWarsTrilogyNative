@@ -61,11 +61,23 @@ the game stops at *FAILED FEEDBACK LEVER INITIALIZE*. `build.bat` says which chi
 You need Windows 10/11 (64-bit) and a GPU with a Vulkan 1.3 driver (most from 2016 on).
 DLAA needs an NVIDIA RTX; on other cards it switches itself off, and the game builds the same on any GPU.
 
+The easy way is **[NicoLauncher](https://github.com/snicolast/NicoLauncher-Hub)**, a free app that
+downloads, builds, updates and starts the game for you. No Visual Studio, nothing to set up by hand.
+
+1. Download **[NicoLauncher-setup.exe](https://github.com/snicolast/NicoLauncher-Hub/releases/latest)** and run it.
+2. In the launcher, open **Star Wars Trilogy**, press **Install** and choose your `swtrilgy.zip` when it asks.
+3. Press **Play**.
+
+<details>
+<summary>Without the launcher: install.bat</summary>
+
 1. Download this repository (green **Code** button > **Download ZIP**) and unzip it.
 2. Put `swtrilgy.zip` in the folder.
 3. Double-click `install.bat`. It installs Python 3 and the Visual Studio 2022 C++ build tools
    with winget (a few GB, accept the Windows prompt), then builds the game.
 4. Play with `StarWarsTrilogy.exe`.
+
+</details>
 
 On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by contributors).
 
@@ -96,7 +108,9 @@ name and run `build.bat` again.
 
 ### Update
 
-When there is a new version, the main menu says what is new and offers **UPDATE NOW**. Or run
+With NicoLauncher: it tells you when there is something new. Press **Update**.
+
+Without it: when there is a new version, the main menu says what is new and offers **UPDATE NOW**. Or run
 `update.bat` yourself: it downloads the changed files from GitHub (no git needed) and rebuilds.
 Your ROM, settings and records are kept; files you edited are backed up to `out\update_backup\`.
 
