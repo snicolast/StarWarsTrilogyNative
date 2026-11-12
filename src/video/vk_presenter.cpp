@@ -360,6 +360,12 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
 bool VkPresenter::create_swapchain() {
     VkSurfaceCapabilitiesKHR caps;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu_, surface_, &caps);
+    if (caps.currentExtent.width == 0xFFFFFFFFu) {   // Wayland: the size is ours to pick, the window's own
+        RECT r{};
+        GetClientRect(hwnd_, &r);
+        caps.currentExtent.width = std::clamp(uint32_t(std::max<LONG>(r.right - r.left, 0)), caps.minImageExtent.width, caps.maxImageExtent.width);
+        caps.currentExtent.height = std::clamp(uint32_t(std::max<LONG>(r.bottom - r.top, 0)), caps.minImageExtent.height, caps.maxImageExtent.height);
+    }
     if (caps.currentExtent.width == 0 || caps.currentExtent.height == 0) return false;   // minimized
     extent_ = caps.currentExtent;
 
