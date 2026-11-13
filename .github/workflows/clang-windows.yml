@@ -47,6 +47,6 @@ jobs:
             -DCMAKE_C_COMPILER=x86_64-w64-mingw32-clang -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-clang++ `
             -DCMAKE_RC_COMPILER=x86_64-w64-mingw32-windres
       - name: Build what does not need the ROM
-        run: cmake --build build\cmake --target shaders m68kmake tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test menu_music_test
+        run: cmake --build build\cmake --target shaders m68kmake tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test menu_music_test achievements_csv_test
       - name: Test
         run: ctest --test-dir build\cmake --output-on-failure
