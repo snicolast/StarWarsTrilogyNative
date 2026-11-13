@@ -6,9 +6,10 @@
 #   ./build_linux.sh [swtrilgy.zip]                  for this computer
 #   ./build_linux.sh --arch aarch64 [swtrilgy.zip]   arm64 from an x86_64 PC (docs/LINUX.md)
 #   ./build_linux.sh --package ...                   also a folder to copy to another of your computers
+#   ./build_linux.sh --appimage ...                  also that folder as one AppImage (tools/make_appimage.sh)
 #   ./build_linux.sh --glibc 2.34 ...                for systems as old as that glibc, not only ones as new as
-#                                                    this one (zig cc, fetched into build/tools; "host": this
-#                                                    system's own compiler, the default)
+#                                                    this one (zig cc, fetched into build/tools; --appimage
+#                                                    builds for 2.34 unless told another, or "host")
 #
 # The ROM: the path given, else SWT_ROM_ZIP, else swtrilgy.zip here or in roms/
 # (only needed the first time).
@@ -23,6 +24,7 @@ fail() {
 HOST=$(uname -m)
 ARCH=$HOST
 PACKAGE=0
+APPIMAGE=0
 GLIBC=
 ZIP=$SWT_ROM_ZIP
 while [ $# -gt 0 ]; do
@@ -30,9 +32,10 @@ while [ $# -gt 0 ]; do
     --arch) ARCH=$2; shift 2 ;;
     --arch=*) ARCH=${1#--arch=}; shift ;;
     --package) PACKAGE=1; shift ;;
+    --appimage) PACKAGE=1; APPIMAGE=1; shift ;;
     --glibc) GLIBC=$2; shift 2 ;;
     --glibc=*) GLIBC=${1#--glibc=}; shift ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) ZIP=$1; shift ;;
     esac
 done
@@ -41,6 +44,8 @@ arm64) ARCH=aarch64 ;;
 amd64) ARCH=x86_64 ;;
 esac
 [ "$ARCH" = x86_64 ] || [ "$ARCH" = aarch64 ] || fail "Unknown architecture $ARCH: x86_64 or aarch64."
+# An AppImage is made to be carried to other systems: not tied to this one's glibc
+[ "$APPIMAGE" = 1 ] && [ -z "$GLIBC" ] && GLIBC=2.34
 [ "$GLIBC" = host ] && GLIBC=
 case "$GLIBC" in
 ""|2.[0-9]|2.[0-9][0-9]) ;;
@@ -186,3 +191,5 @@ Sharing it breaks the project's license (LICENSE) and Sega's copyright.
 EOF
     echo "Package: $OUT"
 fi
+[ "$APPIMAGE" = 1 ] && sh tools/make_appimage.sh "$ARCH"
+exit 0

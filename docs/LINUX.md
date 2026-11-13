@@ -73,6 +73,13 @@ The arm64 build is made with the Raspberry Pi 5 in mind (built on it with `./bui
 program with everything it plays from (the data extracted from your ROM included). Copy that folder whole to another
 of your own computers and run `./StarWarsTrilogy` in it. It holds your ROM's data and code: keep it to yourself.
 
+Or `./build_linux.sh --appimage` (with `--arch aarch64` or not): the same as one file,
+`dist/StarWarsTrilogy-<arch>.AppImage` (made by `tools/make_appimage.sh`, which fetches a pinned appimagetool once),
+built for glibc 2.34 as above unless `--glibc` says another (`--glibc host`: this system's own compiler). It
+needs the `curl` and `file` commands.
+Run it from anywhere; it plays from `~/.local/share/StarWarsTrilogyNative` (or `$SWT_HOME`), where settings, records
+and saves stay from one version to the next. It holds your ROM too: keep it to yourself.
+
 ## Compared with Windows
 
 - Ray tracing works as on Windows, with a driver that has ray queries (NVIDIA, recent AMD and Intel with Mesa).

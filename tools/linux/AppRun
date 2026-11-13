@@ -1,0 +1,22 @@
+#!/bin/sh
+# Star Wars Trilogy Native's AppImage (tools/make_appimage.sh): the game reads
+# and writes relative to the folder it plays from, and the AppImage is read
+# only. It plays from a folder of its own, where settings, records and saves
+# stay from one version to the next; links there lead to what the AppImage
+# carries, made again each time (its mount point changes).
+#   SWT_HOME=/some/folder  plays from that folder instead
+HERE=$(dirname "$(readlink -f "$0")")
+SHARE=$HERE/usr/share/StarWarsTrilogyNative
+DIR=${SWT_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/StarWarsTrilogyNative}
+mkdir -p "$DIR/data" && cd "$DIR" || {
+    echo "Star Wars Trilogy Native: cannot use $DIR" >&2
+    exit 1
+}
+for name in res third_party news.txt; do
+    ln -sfn "$SHARE/$name" "$name"
+done
+# data/ is a folder of its own: the game adds the menus' music to it
+for f in "$SHARE"/data/*.bin; do
+    ln -sfn "$f" "data/${f##*/}"
+done
+exec "$HERE/usr/bin/StarWarsTrilogy" "$@"
