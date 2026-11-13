@@ -614,6 +614,12 @@ int main(int argc, char** argv) {
     bool toast_shown = toast.init("third_party/fonts") && toast_layer.init(presenter);
     toast.set_volume(g_opt.volume);
 
+    // Whether the HUD sits at the widescreen edges, held for the whole phase
+    // being played (compose_2d): the stage it was taken in, if it is held, and
+    // how many 2D frames in a row the top band has looked like a HUD
+    int hud_stage = -1;
+    bool hud_held = false, hud_held_once = false;
+    int hud_frames = 0;
     // Composes the 2D layers of a vblank (out.frame, its layer memory in
     // out.vram) for the renderer. One composition at a time (prep_mutex): the
     // 2D packs and the back layers' scroll keep state between them
@@ -677,6 +683,25 @@ int main(int argc, char** argv) {
         // (its HUD is 3D in fact: r3d_anchor_swt_hud tags it, this lets it move)
         // (not on the duel's briefing: 2D text at the top)
         if (g_swt_duel && lit(20, 460) < 20) out.hud_band = true;
+        // While playing, the choice holds for the whole phase: the game blinks
+        // the top HUD off when the player is hit or blocks a shot, and blinks
+        // SUCCESS / FAILURE after a duel, and those frames must not send the
+        // whole HUD back to 4:3 (issues #57, #82). Text in the top band's
+        // centre (a briefing in the middle of a phase; the HUD leaves it
+        // empty) lets it go; it comes back after half a second of HUD
+        const int stage = g_swt_top_state;
+        if (stage != hud_stage) hud_stage = stage, hud_held = hud_held_once = false, hud_frames = 0;
+        if (stage >= 0) {
+            if (lit(303, 318) >= 8) {
+                hud_held = false, hud_frames = 0;
+            } else if (out.hud_band) {
+                hud_frames++;
+                if (!hud_held_once || hud_frames >= 30) hud_held = hud_held_once = true;
+            } else {
+                hud_frames = 0;
+            }
+            out.hud_band = hud_held;
+        }
         r3d_set_swt_duel(g_swt_duel);
         r3d_set_swt_stage(g_swt_top_state);
         int offset[3];
