@@ -199,6 +199,7 @@ void FrontendSettings::load(const char* path) {
         else if (k == "supersample") supersample = atoi(value) >= 200 ? 200 : atoi(value) >= 150 ? 150 : 100;
         else if (k == "haze") haze = on;
         else if (k == "show_fps") show_fps = on;
+        else if (k == "menu_background") menu_attract = v != "picture";
         else if (k == "bloom") bloom = v == "low" ? 1 : v == "medium" ? 2 : v == "high" ? 3 : on ? 2 : 0;
         else if (k == "ao") ao = on;
         else if (k == "sky") sky = v == "procedural";
@@ -261,7 +262,7 @@ void FrontendSettings::save(const char* path) const {
 #ifndef _WIN32
     fprintf(f, "supersample = %d\n", supersample);
 #endif
-    fprintf(f, "show_fps = %d\n", show_fps);
+    fprintf(f, "show_fps = %d\nmenu_background = %s\n", show_fps, menu_attract ? "attract" : "picture");
     fprintf(f, "check_updates = %d\nnews_seen = %d\n", check_updates, news_seen);
     fclose(f);
 }
@@ -386,7 +387,7 @@ const wchar_t* const Frontend::TAB_NAMES[Frontend::TAB_COUNT] = {L"DISPLAY", L"G
 // soft particles, surface detail).
 // Tabs past VISIBLE_OPTIONS rows scroll.
 const Frontend::OptionTab Frontend::OPTION_TABS[] = {
-    {OPT_QUALITY, DISPLAY_TAB}, {OPT_DISPLAY, DISPLAY_TAB}, {OPT_ASPECT, DISPLAY_TAB}, {OPT_MOTION, DISPLAY_TAB}, {OPT_FPS, DISPLAY_TAB}, {OPT_AA, DISPLAY_TAB}, {OPT_SCALE, DISPLAY_TAB},
+    {OPT_QUALITY, DISPLAY_TAB}, {OPT_DISPLAY, DISPLAY_TAB}, {OPT_ASPECT, DISPLAY_TAB}, {OPT_MOTION, DISPLAY_TAB}, {OPT_FPS, DISPLAY_TAB}, {OPT_MENU_BG, DISPLAY_TAB}, {OPT_AA, DISPLAY_TAB}, {OPT_SCALE, DISPLAY_TAB},
     {OPT_SAT, DISPLAY_TAB}, {OPT_GAMMA, DISPLAY_TAB}, {OPT_SHARPEN, DISPLAY_TAB}, {OPT_UPDATES, DISPLAY_TAB},
     {OPT_SUN, LIGHTING_TAB}, {OPT_SHADOWS, LIGHTING_TAB}, {OPT_RT, LIGHTING_TAB}, {OPT_HDR, LIGHTING_TAB},
     {OPT_AO, LIGHTING_TAB}, {OPT_BLOOM, LIGHTING_TAB}, {OPT_EXPLOSIONS, LIGHTING_TAB}, {OPT_HAZE, LIGHTING_TAB},
@@ -530,6 +531,8 @@ std::vector<Frontend::Item> Frontend::items() const {
                 {OPT_ASPECT, L"WIDESCREEN", ASPECT_NAMES[settings.aspect], ASPECT_HINTS[settings.aspect]},
                 {OPT_MOTION, L"MOTION", settings.smooth ? L"SMOOTH" : L"ORIGINAL",
                  L"Smooth: the 3D is also drawn between the game's 57.5 frames, at your monitor's refresh rate"},
+                {OPT_MENU_BG, L"MENU BACKGROUND", settings.menu_attract ? L"ATTRACT LOOP" : L"PICTURE",
+                 L"Behind the main menu: the arcade's attract (title, rankings, demo) or a picture.  Applies on the next start"},
                 {OPT_FPS, L"SHOW FPS", on_off(settings.show_fps),
                  L"The frames drawn each second, at the top of the screen (at most your monitor's refresh rate)"},
                 {OPT_VOLUME, L"EFFECTS", std::to_wstring(settings.volume), L"Volume of the sound effects and voices"},
@@ -722,6 +725,7 @@ void Frontend::activate(const Item& it, int dir) {
         break;
     case OPT_HAZE: settings.haze = !settings.haze; push(Action::SettingsChanged); break;
     case OPT_FPS: settings.show_fps = !settings.show_fps; push(Action::SettingsChanged); break;
+    case OPT_MENU_BG: settings.menu_attract = !settings.menu_attract; push(Action::SettingsChanged); break;
     case OPT_BLOOM: settings.bloom = (settings.bloom + dir + 4) % 4; push(Action::SettingsChanged); break;
     case OPT_AO: settings.ao = !settings.ao; push(Action::SettingsChanged); break;
     case OPT_SKY: settings.sky = !settings.sky; push(Action::SettingsChanged); break;
@@ -2124,7 +2128,13 @@ bool Frontend::draw(int w, int h, std::vector<uint32_t>& out) {
     bool over_game = this->over_game();
     bool page = screen_ == Screen::Options || screen_ == Screen::Records;
     if (over_game) out.assign(size_t(w) * h, 0);
-    else {
+    else if (game_behind && has_backdrop() && !page && !starting) {
+        // The attract shows through: only the menu's shading and the logo
+        out.assign(size_t(w) * h, 0);
+        px_ = out.data();
+        fill(0, 0, w, h, 0x000000, 0.2f);
+        shade_backdrop();
+    } else {
         if (bg_.empty()) background();
         out = (has_backdrop() && page) || (has_poster() && screen_ == Screen::Options) ? bg_stone_ : bg_;
     }

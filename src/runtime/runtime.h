@@ -52,6 +52,10 @@ extern std::atomic<int> g_arcade_entry;   // PLAY: the game runs through to the 
 // a game that ends goes on to the mission select unseen instead of into the
 // attract, and g_game_over_menu asks app.cpp to open the main menu
 extern std::atomic<bool> g_skip_attract, g_game_over_menu;
+// MENU BACKGROUND: ATTRACT LOOP (set once at launch, app.cpp): the attract
+// plays behind the main menu. A game that ends goes back into it (the main
+// menu opens over it), and QUIT TO MAIN MENU stops there too
+extern std::atomic<bool> g_menu_attract;
 // The game is in its attract (title, rankings, demo, INSERT COIN): app.cpp
 // shows the author's credit over it
 extern std::atomic<bool> g_in_attract;

@@ -351,6 +351,7 @@ int main(int argc, char** argv) {
         g_audio.start();
         g_hold = g_opt.menu || intro;   // the main menu (or the intro video) comes first
         g_skip_attract = g_opt.menu && g_auto.events.empty();   // the menu instead of the attract (runtime.cpp)
+        g_menu_attract = g_skip_attract && ini.menu_attract;     // MENU BACKGROUND: the attract behind the main menu
         g_boot_skip = g_fast_idle = !g_opt.show_boot;
         g_sound.set_dsp_enabled(!g_boot_skip);
         g_sound.set_muted(g_boot_skip);
@@ -606,7 +607,8 @@ int main(int argc, char** argv) {
 
     // PLAY: 1 = join once booted. Star Wars Trilogy goes to its mission select
     // already behind the menu, from the start, so PLAY shows it at once
-    int arcade_join = kAnalogJoystick && g_opt.menu ? 1 : 0;
+    // (not with the attract behind the main menu: it plays there, and PLAY goes from it)
+    int arcade_join = kAnalogJoystick && g_opt.menu && !g_menu_attract ? 1 : 0;
     bool arcade_entered = false;
     bool play_waits = false;   // PLAY pressed while the game still gets to the mission select
 
@@ -908,6 +910,7 @@ int main(int argc, char** argv) {
         // select behind it instead of into the attract (runtime.cpp, attract_guard_frame)
         if (g_game_over_menu.exchange(false) && g_opt.menu) {
             arcade_join = 0;
+            if (g_menu_attract) arcade_entered = false;   // in the attract again: PLAY goes from there
             play_waits = false;
             frontend.starting = false;
             frontend.open(Frontend::Screen::Main);
@@ -974,7 +977,8 @@ int main(int argc, char** argv) {
                     frontend.invalidate();
                     break;
                 case Frontend::Action::QuitToMenu:   // the game over and back to the mission select, unseen (runtime.cpp)
-                    arcade_join = 0;
+                    arcade_join = 0;                   // (to the attract with MENU BACKGROUND: ATTRACT LOOP)
+                    if (g_menu_attract) arcade_entered = false;
                     g_arcade_entry = 3;
                     g_boot_skip = g_fast_idle = true;
                     g_sound.set_dsp_enabled(false);
@@ -1097,6 +1101,16 @@ int main(int argc, char** argv) {
                                  frontend.settings.menu_music,
                              frontend.settings.music, t - music_time);
                 music_time = t;
+            }
+            if (g_menu_attract) {   // MENU BACKGROUND: the attract plays behind the main menu and its pages
+                bool behind = frontend.active() && !frontend.over_game() && !frontend.splash() && !frontend.starting &&
+                              !arcade_entered && !arcade_join && !g_arcade_entry && !g_boot_skip;
+                if (frontend.active()) g_hold = !behind;   // else the menu holds the game, as it always did
+                if (behind) g_sound.set_muted(frontend.settings.menu_music);   // its sound, unless the menus have music
+                if (frontend.game_behind != behind) {
+                    frontend.game_behind = behind;
+                    frontend.invalidate();
+                }
             }
             presenter.set_cursor_visible(frontend.active() && !pad_in_menu && !frontend.splash());
             static const bool menu_pad = getenv("SWT_MENU_PAD") != nullptr;   // debugging aid: the gamepad's key help

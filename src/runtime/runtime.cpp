@@ -106,7 +106,7 @@ std::atomic<uint64_t> g_game_frames{0};
 // at full speed with nothing on screen: the game appears at the SEGA logo.
 std::atomic<bool> g_boot_skip{false};
 std::atomic<int> g_arcade_entry{0};
-std::atomic<bool> g_skip_attract{false}, g_game_over_menu{false}, g_in_attract{false};
+std::atomic<bool> g_skip_attract{false}, g_game_over_menu{false}, g_in_attract{false}, g_menu_attract{false};
 std::atomic<int> g_debug_jump{-1};
 // Menus: the game stands still (and so does its sound) while set. The boot
 // screens still run through first, so Play starts at the SEGA logo.
@@ -1143,6 +1143,7 @@ static bool in_attract() {
 
 static bool arcade_entry_frame() {
     static uint64_t from = 0, select_at = 0, settle = 0;
+    static bool to_attract = false;   // QUIT TO MAIN MENU over the attract: done once back in it
     PlayerInputs& p = g_inputs.p[0];
     p.trigger = p.offscreen = p.event = false;
     uint8_t mode = rd8(0x1BC85B);
@@ -1164,6 +1165,7 @@ static bool arcade_entry_frame() {
                unsigned(mode), unsigned(rd32(0x2210FC)));
         g_arcade_entry = 1;
         settle = 180;   // the attract clears the game over's screens (CONTINUE?) first
+        to_attract = g_menu_attract && g_debug_jump < 0;
     }
     if (g_arcade_entry == 1) {
         g_arcade_entry = 2;
@@ -1173,9 +1175,18 @@ static bool arcade_entry_frame() {
         p.coin = p.start = false;
         return false;
     }
+    if (to_attract) {   // the attract on screen again, behind the main menu
+        to_attract = false;
+        g_arcade_entry = 0;
+        settle = 0;
+        return true;
+    }
     if (attract && g_frame - from < 6000 + settle) {
         uint64_t k = (g_frame - from - settle) % 60;
-        p.coin = k < 6;
+        // No coin once the game is starting (sequence 2, 3): a credit left
+        // over would start another game from the attract
+        uint32_t seq = rd32(0x2210FC);
+        p.coin = k < 6 && seq != 2 && seq != 3;
         p.start = k >= 30 && k < 36;
         return false;
     }
@@ -1220,6 +1231,11 @@ static void attract_guard_frame() {
     bool ended = !was && attract;
     was = attract;
     if (!ended || !g_skip_attract || g_arcade_entry || g_boot_skip) return;
+    if (g_menu_attract) {   // into the attract as on the cabinet, the main menu over it
+        printf("[play] the game is over: back to the menu over the attract (frame %llu)\n", (unsigned long long)g_frame);
+        g_game_over_menu = true;
+        return;
+    }
     printf("[play] the game is over: back to the menu, on to the mission select unseen (frame %llu)\n",
            (unsigned long long)g_frame);
     g_boot_skip = g_fast_idle = true;
