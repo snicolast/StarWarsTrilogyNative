@@ -231,14 +231,20 @@ void R3DSceneBuilder::pair_copies() {
     // path, so it would not be interpolated for one frame while its neighbours
     // are: the joints between them open and flicker. It takes the key of the
     // same model in the previous frame, at the place it was, if nobody else has it.
+    // Only models in VROM: one in polygon RAM is a buffer the game fills anew
+    // each frame, and the same address at the same place is not the same
+    // object (the cape of a snowtrooper lying in Hoth's base, drawn from such
+    // a buffer in a different viewport each frame, was paired with what the
+    // buffer held the frame before and stretched towards it, issue #80)
     {
+        auto in_vrom = [](uint32_t model) { return (model & 0xFFFFFF) >= 0x100000; };   // as model_word reads it
         std::unordered_set<uint32_t> prev_keys, now_keys;
         for (const PrevInstance& p : prev_instances_) prev_keys.insert(p.key);
         for (const auto& list : viewport_instances_)
             for (const R3DInstance& in : list) now_keys.insert(in.key);
         std::unordered_map<uint32_t, std::vector<const PrevInstance*>> by_model;
         for (const PrevInstance& p : prev_instances_)
-            if (!now_keys.count(p.key)) by_model[p.start].push_back(&p);
+            if (!now_keys.count(p.key) && in_vrom(p.start)) by_model[p.start].push_back(&p);
         if (!by_model.empty()) {
             std::unordered_set<uint32_t> taken;
             // rekey's values back to their keys (a chain is followed in one
@@ -248,7 +254,7 @@ void R3DSceneBuilder::pair_copies() {
             for (auto& [from, to] : rekey) back[to] = from;
             for (auto& list : viewport_instances_)
                 for (R3DInstance& in : list) {
-                    if (prev_keys.count(in.key)) continue;
+                    if (prev_keys.count(in.key) || !in_vrom(in.start)) continue;
                     auto it = by_model.find(in.start);
                     if (it == by_model.end()) continue;
                     const PrevInstance* best = nullptr;
