@@ -226,6 +226,7 @@ add_executable(StarWarsTrilogy WIN32
     src/runtime/gamepad.cpp
     src/runtime/scsi53c810.cpp
     src/runtime/stats.cpp
+    src/runtime/achievements_csv.cpp
     src/ui/achievement_toast.cpp
     src/runtime/options.cpp
     src/runtime/rom_zip.cpp
@@ -281,6 +282,20 @@ target_include_directories(StarWarsTrilogy PRIVATE
     third_party/z80
     third_party/minimp3
 )
+# The achievement icons (res/achievements/*.png) built into the exe as byte
+# arrays (achievement_icons.h): the game writes them next to
+# achievements/achievements.csv (src/runtime/achievements_csv.cpp)
+set(ICONS_DIR ${CMAKE_CURRENT_BINARY_DIR}/achievement_icons)
+set(icons_h "")
+foreach(icon unlocked locked)
+    set(png ${CMAKE_CURRENT_SOURCE_DIR}/res/achievements/${icon}.png)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${png})
+    file(READ ${png} hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," hex "${hex}")
+    string(APPEND icons_h "static const unsigned char ICON_${icon}[] = {${hex}};\n")
+endforeach()
+file(CONFIGURE OUTPUT ${ICONS_DIR}/achievement_icons.h CONTENT "${icons_h}")
+target_include_directories(StarWarsTrilogy PRIVATE ${ICONS_DIR})
 # volk loads vulkan-1.dll at runtime: the SDK is not needed
 target_compile_definitions(StarWarsTrilogy PRIVATE VK_NO_PROTOTYPES)
 if(APPLE)
@@ -347,7 +362,10 @@ if(LW_TESTS)
         target_include_directories(menu_music_test PRIVATE third_party/minimp3)
         set(MENU_MUSIC_TEST menu_music_test)
     endif()
-    foreach(t tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test ${MENU_MUSIC_TEST})
+    add_executable(achievements_csv_test tests/achievements_csv_test.cpp src/runtime/achievements_csv.cpp)
+    target_include_directories(achievements_csv_test PRIVATE ${ICONS_DIR})
+    foreach(t tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test ${MENU_MUSIC_TEST}
+            achievements_csv_test)
         target_include_directories(${t} PRIVATE src/video src/common src/runtime src/audio src/ui ${MINIZ_DIR})
         if(MSVC)
             target_compile_options(${t} PRIVATE /W4 /utf-8)
@@ -366,6 +384,7 @@ if(LW_TESTS)
     add_test(NAME jtag COMMAND jtag_test)
     add_test(NAME r3d_state COMMAND r3d_state_test)
     add_test(NAME news COMMAND news_test)
+    add_test(NAME achievements_csv COMMAND achievements_csv_test)
     if(NOT APPLE)
         add_test(NAME menu_music COMMAND menu_music_test)
     endif()
