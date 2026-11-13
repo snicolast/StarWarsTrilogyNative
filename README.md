@@ -28,6 +28,7 @@
 - **Arcade sound**, Digital Sound Board music and voices included, with surround and headphone modes.
 - **Mouse, gamepad (gyro too), light gun or flight stick**, with aim assist and force feedback as rumble.
 - **Quality presets** from laptops to RTX cards, and **achievements and stats** in Records.
+  The achievements are also written to `achievements/achievements.csv` for [PlayniteAchievements](https://github.com/justin-delano/PlayniteAchievements) (Editor, Spreadsheet Import).
 
 <table>
   <tr>
