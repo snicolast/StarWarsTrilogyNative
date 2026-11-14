@@ -159,6 +159,27 @@ if(APPLE)
     set(MOLTENVK_DYLIB ${moltenvk_SOURCE_DIR}/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib)
 endif()
 
+# FreeType, GDI's text on Linux (src/platform/linux/win32_linux.cpp):
+# downloaded once at configure time and built into the program, with none of
+# the libraries it can use (the game's fonts are plain TrueType), so the game
+# does not depend on the system's
+if(UNIX AND NOT APPLE)
+    foreach(lib ZLIB BZIP2 PNG HARFBUZZ BROTLI)
+        set(FT_DISABLE_${lib} ON CACHE BOOL "" FORCE)
+    endforeach()
+    set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+    set(FREETYPE_URL https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz)
+    if(EXISTS ${CMAKE_SOURCE_DIR}/third_party/downloads/freetype-2.13.3.tar.xz)   # saved there by hand, as the others
+        set(FREETYPE_URL ${CMAKE_SOURCE_DIR}/third_party/downloads/freetype-2.13.3.tar.xz)
+    endif()
+    FetchContent_Declare(freetype
+        URL ${FREETYPE_URL}
+        URL_HASH SHA256=0550350666d427c74daeb85d5ac7bb353acba5f76956395995311a9c6f063289
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(freetype)
+endif()
+
 # Musashi (68000 of the sound board): m68kmake generates the opcode tables
 set(MUSASHI_DIR ${CMAKE_SOURCE_DIR}/third_party/musashi)
 set(MUSASHI_GEN ${CMAKE_BINARY_DIR}/musashi)
@@ -354,12 +375,10 @@ elseif(UNIX)
     # Linux (x86_64, arm64): the Mac's Win32 names in every file, as there. As
     # MSVC builds it: a*b+c stays two operations, memory of any type can be read
     # as any other, integers wrap around, and char is signed (it is not on arm64)
-    find_package(Freetype REQUIRED)   # GDI's text (win32_linux.cpp)
-    find_package(CURL REQUIRED)       # the news check (UPDATE AVAILABLE)
     target_include_directories(StarWarsTrilogy PRIVATE ${MAC_DIR} ${LINUX_DIR} src/audio src/ui third_party/stb)
     target_compile_options(StarWarsTrilogy PRIVATE -ffp-contract=off -fno-strict-aliasing -fwrapv -fsigned-char
         "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include \"${MAC_DIR}/compat.h\">")
-    target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static Freetype::Freetype CURL::libcurl ${CMAKE_DL_LIBS} pthread)
+    target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static freetype ${CMAKE_DL_LIBS} pthread)
 else()
     target_compile_definitions(StarWarsTrilogy PRIVATE VK_USE_PLATFORM_WIN32_KHR)
     target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static winmm ole32 oleaut32 windowscodecs mfplat mfuuid gdi32 dwmapi shell32 winhttp

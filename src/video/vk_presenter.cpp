@@ -189,7 +189,11 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     for (auto g : gpus) {
         VkPhysicalDeviceProperties p;
         vkGetPhysicalDeviceProperties(g, &p);
-        if (p.apiVersion < VK_API_VERSION_1_3) continue;
+        if (p.apiVersion < VK_API_VERSION_1_3) {
+            fprintf(stderr, "[vulkan] %s: its driver has Vulkan %u.%u, the game needs 1.3\n", p.deviceName,
+                    VK_API_VERSION_MAJOR(p.apiVersion), VK_API_VERSION_MINOR(p.apiVersion));
+            continue;
+        }
         uint32_t qn = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(g, &qn, nullptr);
         std::vector<VkQueueFamilyProperties> qs(qn);
