@@ -13,6 +13,12 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[15] 2026-11-14
+- Hoth base: with MOTION: SMOOTH, the capes of fallen snowtroopers no longer stretch across the screen
+- Widescreen: the HUD no longer jumps back to 4:3 when you get hit or a SUCCESS counter appears in duels
+- NicoLauncher now shows your achievements on the game's page
+- The achievements are also saved to achievements/achievements.csv, ready to import into PlayniteAchievements (Editor, Spreadsheet Import)
+
 [14] 2026-11-12
 - NicoLauncher is out: one free app that installs, builds, updates and starts this game and the other recomps. No Visual Studio needed
 - Get it at github.com/snicolast/NicoLauncher-Hub. Your current install keeps working, and the launcher can use the folder you already have
