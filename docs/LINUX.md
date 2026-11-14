@@ -4,7 +4,7 @@ The Linux build is maintained by contributors. It runs on x86_64 and arm64 (aarc
 
 ## Build
 
-You need a GPU with a Vulkan 1.3 driver, Python 3, a C++20 compiler (clang is used if there is one, else g++), CMake
+You need a GPU with a Vulkan 1.3 driver (or 1.2 with `VK_KHR_dynamic_rendering`), Python 3, a C++20 compiler (clang is used if there is one, else g++), CMake
 3.27 or later and Ninja (or `build_linux.sh` fetches pinned copies of those two into `build/`), and the development
 files SDL3 needs for the window, the sound and the gamepads. On Debian or Ubuntu:
 
@@ -55,9 +55,13 @@ development files are the same.
 The arm64 build is made with the Raspberry Pi 5 in mind (built on it with `./build_linux.sh`, or on a PC with
 `--arch aarch64`), with these limits:
 
-- The game needs Vulkan 1.3 from the GPU's driver (Mesa's v3dv): **Raspberry Pi OS Trixie** (Debian 13) has it. With
-  an older driver the game says so when it starts (`its driver has Vulkan 1.2, the game needs 1.3`). Built on the Pi
-  itself the program fits its system; built on a PC, `--glibc 2.34` makes one for Bookworm and Trixie alike.
+- The GPU's driver (Mesa's v3dv) has Vulkan 1.3 from Mesa 24.3 (**Raspberry Pi OS Trixie**); with Mesa 24.2
+  (Bookworm, updated) it has Vulkan 1.2 and dynamic rendering as an extension, which the game takes too (it then
+  says `Vulkan 1.2 with VK_KHR_dynamic_rendering`). With an older driver the game names it and its Vulkan version
+  when it starts. If the log says the picture is drawn `on the processor` (Mesa's llvmpipe), no GPU driver was
+  usable: update the system.
+- Built on the Pi itself the program fits its system; built on a PC, `--glibc 2.34` makes one for Bookworm and
+  Trixie alike.
 - The GPU has no descriptor indexing: the game runs without the texture pack and the 2D replacement pictures (the
   game's own textures and text), and without ray tracing (the shadow map draws the sun shadows).
 - It is far slower than a desktop GPU: start with **Options > Display > Quality > LOW**, anti-aliasing off, a

@@ -134,14 +134,15 @@ set(CMAKE_C_COMPILER "$ZDIR/cc")
 set(CMAKE_CXX_COMPILER "$ZDIR/c++")
 unset(CMAKE_C_COMPILER_TARGET)
 unset(CMAKE_CXX_COMPILER_TARGET)
-set(CMAKE_EXE_LINKER_FLAGS_INIT "-s")   # zig keeps debugging data unless told (six times the size)
+set(CMAKE_EXE_LINKER_FLAGS_INIT "")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "")
 set(CMAKE_LINK_DEPENDS_USE_LINKER OFF)   # zig's linker has no --dependency-file
 set(CMAKE_AR "$ZDIR/ar" CACHE FILEPATH "" FORCE)
 set(CMAKE_RANLIB "$ZDIR/ranlib" CACHE FILEPATH "" FORCE)
 EOF
     } > "$ZDIR/toolchain.cmake"
-    set -- "$@" -DCMAKE_TOOLCHAIN_FILE="$ZDIR/toolchain.cmake"
+    # -s: zig keeps debugging data unless told (six times the size)
+    set -- "$@" -DCMAKE_TOOLCHAIN_FILE="$ZDIR/toolchain.cmake" -DCMAKE_EXE_LINKER_FLAGS=-s
 elif [ "$ARCH" != "$HOST" ]; then
     set -- "$@" -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/linux-aarch64.cmake"
 elif command -v clang++ >/dev/null 2>&1; then
@@ -175,8 +176,9 @@ if [ "$PACKAGE" = 1 ]; then
     cat > "$OUT/README.txt" <<EOF
 Star Wars Trilogy Native for Linux $ARCH, built $(date +%Y-%m-%d) from your own swtrilgy.zip.
 
-Run ./StarWarsTrilogy in this folder. It needs a Vulkan 1.3 driver (and
-libvulkan1) and $NEEDS.
+Run ./StarWarsTrilogy in this folder. It needs $NEEDS
+and a graphics driver with Vulkan 1.3, or 1.2 and VK_KHR_dynamic_rendering
+(Mesa 24.2 on a Raspberry Pi 5), with the Vulkan loader (libvulkan1).
 Settings, records and saves are kept in this folder.
 
 This folder holds data and code from your ROM: for your own computers only.

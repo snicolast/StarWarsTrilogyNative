@@ -142,9 +142,13 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     if (!check(volkInitialize(), "volkInitialize (is the Vulkan driver missing?)")) return false;
 #endif
 
+    // Vulkan 1.3, or 1.2 with the one thing of 1.3 the renderer uses, dynamic
+    // rendering, as an extension (Mesa's v3dv before 24.3: the Raspberry Pi 5
+    // under Raspberry Pi OS Bookworm). SWT_VULKAN_1_2 takes that way on any GPU
+    static const bool only_1_2 = getenv("SWT_VULKAN_1_2") != nullptr;
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "Star Wars Trilogy Native";
-    app.apiVersion = VK_API_VERSION_1_3;
+    app.apiVersion = only_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_3;
 #ifdef __APPLE__
     std::vector<std::string> inst_names = {VK_KHR_SURFACE_EXTENSION_NAME, VK_EXT_METAL_SURFACE_EXTENSION_NAME};
 #elif !defined(_WIN32)
@@ -180,7 +184,19 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     if (!check(vkCreateWin32SurfaceKHR(instance_, &sci, nullptr, &surface_), "vkCreateWin32SurfaceKHR")) return false;
 #endif
 
-    // GPU: prefer a discrete one with Vulkan 1.3 and a graphics queue that can present
+    // GPU: prefer a discrete one, with Vulkan 1.3 (or 1.2 and dynamic rendering)
+    // and a graphics queue that can present; a software renderer only when
+    // there is nothing else
+    auto has_extension = [](VkPhysicalDevice g, const char* name) {
+        uint32_t count = 0;
+        vkEnumerateDeviceExtensionProperties(g, nullptr, &count, nullptr);
+        std::vector<VkExtensionProperties> avail(count);
+        vkEnumerateDeviceExtensionProperties(g, nullptr, &count, avail.data());
+        for (auto& a : avail)
+            if (!strcmp(a.extensionName, name)) return true;
+        return false;
+    };
+    bool rendering_ext = false, software = false;   // of the GPU chosen
     uint32_t n = 0;
     vkEnumeratePhysicalDevices(instance_, &n, nullptr);
     std::vector<VkPhysicalDevice> gpus(n);
@@ -189,9 +205,11 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     for (auto g : gpus) {
         VkPhysicalDeviceProperties p;
         vkGetPhysicalDeviceProperties(g, &p);
-        if (p.apiVersion < VK_API_VERSION_1_3) {
-            fprintf(stderr, "[vulkan] %s: its driver has Vulkan %u.%u, the game needs 1.3\n", p.deviceName,
-                    VK_API_VERSION_MAJOR(p.apiVersion), VK_API_VERSION_MINOR(p.apiVersion));
+        bool by_extension = p.apiVersion < VK_API_VERSION_1_3 || only_1_2;
+        if (by_extension && (p.apiVersion < VK_API_VERSION_1_2 || !has_extension(g, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME))) {
+            fprintf(stderr, "[vulkan] %s: its driver has Vulkan %u.%u, the game needs 1.3 (or 1.2 with "
+                            "VK_KHR_dynamic_rendering): update the graphics driver\n",
+                    p.deviceName, VK_API_VERSION_MAJOR(p.apiVersion), VK_API_VERSION_MINOR(p.apiVersion));
             continue;
         }
         uint32_t qn = 0;
@@ -202,12 +220,16 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
             VkBool32 present = VK_FALSE;
             vkGetPhysicalDeviceSurfaceSupportKHR(g, q, surface_, &present);
             if (!(qs[q].queueFlags & VK_QUEUE_GRAPHICS_BIT) || !present) continue;
-            int score = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 2 : 1;
+            int score = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 2
+                        : p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU        ? 0
+                                                                             : 1;
             if (score > best_score) {
                 best_score = score;
                 gpu_ = g;
                 queue_family_ = q;
                 device_name_ = p.deviceName;
+                rendering_ext = by_extension;
+                software = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
             }
             break;
         }
@@ -216,6 +238,10 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
         fprintf(stderr, "[vulkan] no GPU with Vulkan 1.3 that can present to the window\n");
         return false;
     }
+    if (software)
+        fprintf(stderr, "[vulkan] %s draws on the processor, not on a GPU (no GPU driver the game can use was found): "
+                        "it will be very slow\n", device_name_.c_str());
+    if (rendering_ext) printf("[vulkan] Vulkan 1.2 with VK_KHR_dynamic_rendering\n");
 
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qci{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
@@ -223,6 +249,7 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     qci.queueCount = 1;
     qci.pQueuePriorities = &prio;
     std::vector<std::string> dev_names = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    if (rendering_ext) dev_names.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
 #ifdef __APPLE__
     dev_names.push_back("VK_KHR_portability_subset");   // MoltenVK has it, and then it must be asked for
 #endif
@@ -322,19 +349,23 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
         f12.bufferDeviceAddress = have.bufferDeviceAddress;
     }
     if (ray_query_) f12.bufferDeviceAddress = VK_TRUE;   // acceleration structures are built from buffer addresses
+    // Dynamic rendering: Vulkan 1.3's own, or the extension's on 1.2; the rest follows either
     VkPhysicalDeviceVulkan13Features f13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-    f13.pNext = &f12;
     f13.dynamicRendering = VK_TRUE;
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR fdyn{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
+    fdyn.dynamicRendering = VK_TRUE;
+    void* rest = &f12;
     if (present_wait_) {
-        fwait.pNext = f13.pNext;
-        f13.pNext = &fid;
+        fwait.pNext = rest;
+        rest = &fid;
     }
     if (ray_query_) {
-        frq.pNext = f13.pNext;
-        f13.pNext = &fas;
+        frq.pNext = rest;
+        rest = &fas;
     }
+    f13.pNext = fdyn.pNext = rest;
     VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-    features.pNext = &f13;
+    features.pNext = rendering_ext ? static_cast<void*>(&fdyn) : static_cast<void*>(&f13);
     features.features.samplerAnisotropy = VK_TRUE;
     // DLAA: the translucent pass blends colour but leaves the motion vectors alone
     features.features.independentBlend = with_ngx ? VK_TRUE : VK_FALSE;
@@ -346,6 +377,10 @@ bool VkPresenter::init(const char* title, int width, int height, bool with_ngx) 
     dci.ppEnabledExtensionNames = dev_ext.data();
     if (!check(vkCreateDevice(gpu_, &dci, nullptr, &device_), "vkCreateDevice")) return false;
     volkLoadDevice(device_);
+    if (rendering_ext) {   // the same two calls under the extension's names
+        vkCmdBeginRendering = vkCmdBeginRenderingKHR;
+        vkCmdEndRendering = vkCmdEndRenderingKHR;
+    }
     vkGetDeviceQueue(device_, queue_family_, 0, &queue_);
 
     VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
