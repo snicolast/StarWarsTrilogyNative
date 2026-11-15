@@ -132,6 +132,19 @@ void R3DRenderer::destroy_buffer(Buffer& b) {
     b = Buffer{};
 }
 
+// SWT_INIT_LOG: every step of the start, as it begins, with the seconds since
+// the first one (a GPU driver that takes long over the shaders, or hangs)
+static bool init_log(const char* step, int n = -1) {
+    static const bool on = getenv("SWT_INIT_LOG") != nullptr;
+    static const auto from = std::chrono::steady_clock::now();
+    if (!on) return false;
+    double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - from).count();
+    if (n >= 0) printf("[init] %7.2f s  %s %d\n", t, step, n);
+    else printf("[init] %7.2f s  %s\n", t, step);
+    fflush(stdout);
+    return true;
+}
+
 bool R3DRenderer::create_image(Image& img, uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usage,
                                VkImageAspectFlags aspect, VkSampleCountFlagBits samples) {
     VkImageCreateInfo ii{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
@@ -142,20 +155,26 @@ bool R3DRenderer::create_image(Image& img, uint32_t w, uint32_t h, VkFormat form
     ii.samples = samples;
     ii.tiling = VK_IMAGE_TILING_OPTIMAL;
     ii.usage = usage;
-    if (vkCreateImage(dev_, &ii, nullptr, &img.image) != VK_SUCCESS) return false;
+    // Said, not only returned: the images of the window's size are made without a check
+    auto failed = [&](const char* what, VkResult r) {
+        fprintf(stderr, "[vulkan] could not %s a %ux%u image (format %d, %d samples, usage 0x%X): %d\n", what, w, h,
+                int(format), int(samples), unsigned(usage), int(r));
+        return false;
+    };
+    if (VkResult r = vkCreateImage(dev_, &ii, nullptr, &img.image); r != VK_SUCCESS) return failed("create", r);
     VkMemoryRequirements req;
     vkGetImageMemoryRequirements(dev_, img.image, &req);
     VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     ai.allocationSize = req.size;
     ai.memoryTypeIndex = vk_->find_memory(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    if (vkAllocateMemory(dev_, &ai, nullptr, &img.memory) != VK_SUCCESS) return false;
+    if (VkResult r = vkAllocateMemory(dev_, &ai, nullptr, &img.memory); r != VK_SUCCESS) return failed("allocate", r);
     vkBindImageMemory(dev_, img.image, img.memory, 0);
     VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vi.image = img.image;
     vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
     vi.format = format;
     vi.subresourceRange = {aspect, 0, 1, 0, 1};
-    vkCreateImageView(dev_, &vi, nullptr, &img.view);
+    if (VkResult r = vkCreateImageView(dev_, &vi, nullptr, &img.view); r != VK_SUCCESS) return failed("make a view of", r);
     img.layout = VK_IMAGE_LAYOUT_UNDEFINED;
     img.w = w;
     img.h = h;
@@ -236,6 +255,7 @@ bool R3DRenderer::init(VkPresenter& vk, float supersample, int msaa, int aniso, 
         printf("[vulkan] %u images per shader%s: texture pack %u slots, 2D replacements %s\n", limit,
                update_after_bind_ ? " (update after bind)" : "", replace_slots_ - 1, overlay_slots_ > 1 ? "on" : "off");
 
+    init_log("images and buffers");
     const VkImageUsageFlags sampled = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if (!create_image(texture_ram_, 2048, 2048, VK_FORMAT_R16_UINT, sampled, VK_IMAGE_ASPECT_COLOR_BIT))
         return fail("the texture RAM");
@@ -267,6 +287,7 @@ bool R3DRenderer::init(VkPresenter& vk, float supersample, int msaa, int aniso, 
                       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                       VK_IMAGE_ASPECT_COLOR_BIT))
         return fail("the exposure image");
+    init_log("first commands to the GPU (clears)");
     vk.run_once([&](VkCommandBuffer cmd) {
         transition(cmd, shadow_map_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
         VkClearColorValue start{};
@@ -284,6 +305,7 @@ bool R3DRenderer::init(VkPresenter& vk, float supersample, int msaa, int aniso, 
         }
     });
 
+    init_log("samplers and descriptor sets");
     VkSamplerCreateInfo si{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     si.magFilter = si.minFilter = VK_FILTER_NEAREST;
     si.addressModeU = si.addressModeV = si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -488,16 +510,65 @@ bool R3DRenderer::init(VkPresenter& vk, float supersample, int msaa, int aniso, 
     pli.pPushConstantRanges = &apr;
     if (vkCreatePipelineLayout(dev_, &pli, nullptr, &ao_layout_) != VK_SUCCESS) return fail("the AO pipeline layout");
 
+    init_log("placeholder pictures");
     if (no_indexing_) {   // nothing may be left unwritten: a clear pixel in the one slot of each array, and for the text atlas
         const std::vector<uint8_t> clear(4, 0);
         upload_slot(r3d_set_, 1, replace_sampler_, 0, 1, 1, clear);
         upload_slot(compose_set_, 3, overlay_sampler_, 0, 1, 1, clear, true);
         upload_slot(compose_set_, 5, overlay_sampler_, 0, 1, 1, clear);
     }
-    return create_pipelines();
+    // The driver's compiled shaders, kept from one start to the next: on a slow
+    // one (Mesa on a Raspberry Pi) the first start compiles them for minutes.
+    // The driver checks the file is its own (vendor, device, its cache UUID)
+    constexpr const char* CACHE_FILE = "save/pipelines.bin";
+    std::vector<char> cached;
+    if (FILE* f = fopen(CACHE_FILE, "rb")) {
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (size > 32) {
+            cached.resize(size_t(size));
+            if (fread(cached.data(), 1, cached.size(), f) != cached.size()) cached.clear();
+        }
+        fclose(f);
+    }
+    if (cached.size() > 32) {   // its header: size, version, vendor, device, UUID
+        uint32_t vendor, device;
+        memcpy(&vendor, cached.data() + 8, 4);
+        memcpy(&device, cached.data() + 12, 4);
+        if (vendor != props.vendorID || device != props.deviceID ||
+            memcmp(cached.data() + 16, props.pipelineCacheUUID, VK_UUID_SIZE) != 0)
+            cached.clear();   // another GPU or driver: compiled again
+    }
+    VkPipelineCacheCreateInfo pci{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+    pci.initialDataSize = cached.size();
+    pci.pInitialData = cached.empty() ? nullptr : cached.data();
+    if (vkCreatePipelineCache(dev_, &pci, nullptr, &pipeline_cache_) != VK_SUCCESS) pipeline_cache_ = VK_NULL_HANDLE;
+    if (cached.empty())
+        printf("[video] compiling the shaders: on a slow GPU driver (a Raspberry Pi) this first start can take "
+               "minutes, the next ones much less\n");
+    init_log("pipelines (the driver compiles the shaders)");
+    bool pipelines = create_pipelines();
+    init_log(pipelines ? "renderer ready" : "pipelines failed");
+    if (pipelines && pipeline_cache_ && cached.empty()) {
+        size_t size = 0;
+        vkGetPipelineCacheData(dev_, pipeline_cache_, &size, nullptr);
+        std::vector<char> data(size);
+        if (size && vkGetPipelineCacheData(dev_, pipeline_cache_, &size, data.data()) == VK_SUCCESS) {
+            CreateDirectoryA("save", nullptr);
+            if (FILE* f = fopen(CACHE_FILE, "wb")) {
+                fwrite(data.data(), 1, size, f);
+                fclose(f);
+            }
+        }
+    }
+    return pipelines;
 }
 
 VkPipeline R3DRenderer::make_pipeline(const PipelineDesc& d) {
+    static int count = 0;
+    init_log("pipeline", ++count);
+    const auto pipeline_from = std::chrono::steady_clock::now();
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, d.vs, "main"};
     stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, d.fs, "main"};
@@ -612,8 +683,11 @@ VkPipeline R3DRenderer::make_pipeline(const PipelineDesc& d) {
     gp.pDynamicState = &dy;
     gp.layout = d.layout;
     VkPipeline p = VK_NULL_HANDLE;
-    if (vkCreateGraphicsPipelines(dev_, VK_NULL_HANDLE, 1, &gp, nullptr, &p) != VK_SUCCESS)
-        fprintf(stderr, "[vulkan] could not create a pipeline\n");
+    VkResult made = vkCreateGraphicsPipelines(dev_, pipeline_cache_, 1, &gp, nullptr, &p);
+    if (made != VK_SUCCESS) fprintf(stderr, "[vulkan] could not create pipeline %d (%d)\n", count, int(made));
+    // The driver compiles the shaders here: seconds each on a slow one, the first time
+    double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - pipeline_from).count();
+    if (took > 2.0) printf("[vulkan] pipeline %d: its shaders took the driver %.1f s\n", count, took);
     return p;
 }
 
@@ -2254,6 +2328,7 @@ void R3DRenderer::shutdown() {
     vkDeviceWaitIdle(dev_);
     for (auto p : {opaque_, translucent_, trans_depth_, shadow_, rays_, compose_measure_, compose_, bloom_, compose_glow_, ao_pass_, ao_apply_, ao_apply_glow_})
         if (p) vkDestroyPipeline(dev_, p, nullptr);
+    if (pipeline_cache_) vkDestroyPipelineCache(dev_, pipeline_cache_, nullptr);
     dlaa_.shutdown();
     rt_.shutdown();
     if (gpu_times_) vkDestroyQueryPool(dev_, gpu_times_, nullptr);
