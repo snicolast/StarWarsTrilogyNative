@@ -74,6 +74,26 @@ downloads, builds, updates and starts the game for you. No Visual Studio, nothin
 
 On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by contributors).
 
+### Linux
+
+On Linux (x86_64 or arm64, X11 or Wayland), build it with `build_linux.sh` (maintained by contributors). You need
+a GPU with a Vulkan 1.3 driver, Python 3, clang or g++, and the development files listed in
+[docs/LINUX.md](docs/LINUX.md) (CMake and Ninja are fetched if missing).
+
+```sh
+./build_linux.sh ~/roms/swtrilgy.zip   # extracts the ROM, recompiles it, builds ./StarWarsTrilogy and runs the tests
+./StarWarsTrilogy                       # plays from this folder (settings, records and saves stay here)
+```
+
+Only the first build needs the zip. Other ways to build, all in [docs/LINUX.md](docs/LINUX.md):
+
+- `--arch aarch64`: for arm64 (Raspberry Pi 5) from an x86_64 PC.
+- `--glibc 2.34`: a program that also runs on older systems (RHEL 9, Ubuntu 22.04, Debian 12).
+- `--package`: a folder with everything the game plays from, for another of your own computers.
+- `--appimage`: that folder as one AppImage file.
+
+What you build holds your ROM's code and data: keep it to yourself, never share it.
+
 ### Update
 
 With NicoLauncher: it tells you when there is something new. Press **Update**.
