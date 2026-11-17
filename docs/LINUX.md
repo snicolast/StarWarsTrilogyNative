@@ -65,7 +65,7 @@ The arm64 build is made with the Raspberry Pi 5 in mind (built on it with `./bui
 - The GPU has no descriptor indexing: the game runs without the texture pack and the 2D replacement pictures (the
   game's own textures and text), and without ray tracing (the shadow map draws the sun shadows).
 - It is far slower than a desktop GPU: start with **Options > Display > Quality > LOW**, anti-aliasing off, a
-  1280x720 or 1920x1080 screen.
+  1280x720 or 1920x1080 screen, and **SHOW FPS** to see what each option costs.
 
 ## Another of your computers
 
@@ -83,6 +83,7 @@ and saves stay from one version to the next. It holds your ROM too: keep it to y
 ## Compared with Windows
 
 - Ray tracing works as on Windows, with a driver that has ray queries (NVIDIA, recent AMD and Intel with Mesa).
+- **Options > Display > SHOW FPS** shows the frames drawn each second (`SWT_SHOW_FPS=1` does too, without the menus).
 - No DLAA yet: picking it uses MSAA, as on a GPU without it. **Options > Display > Supersampling** (1.5x, 2x) draws the 3D
   larger and scales it down, for smoother edges still on a fast GPU.
 - No splash video: the splash picture shows in its place.
