@@ -2,7 +2,8 @@
 
 <p align="center">
   <b>An unofficial, fan-made recompilation of the 1998 arcade game Star Wars Trilogy Arcade.</b><br>
-  Not an emulator: the original program, recompiled to C++ on your own PC from your own copy, with a modern Vulkan renderer.
+  Not an emulator: the original program, recompiled to C++ on your own PC from your own copy, with a modern Vulkan renderer.<br>
+  For Windows PC and Mac (Apple silicon).
 </p>
 
 > [!IMPORTANT]
@@ -76,11 +77,15 @@ On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md) (maintained by c
 
 ### Update
 
-With NicoLauncher: it tells you when there is something new. Press **Update**.
+With NicoLauncher: it tells you when there is something new. Press **Update**. This is always the stable version.
 
 Without it: when there is a new version, the main menu says what is new and offers **UPDATE NOW**. Or run
 `update.bat` yourself: it downloads the changed files from GitHub (no git needed) and rebuilds.
 Your ROM, settings and records are kept; files you edited are backed up to `out\update_backup\`.
+
+> [!NOTE]
+> `update.bat` installs the latest changes merged on GitHub, as soon as they are merged, so the game
+> can be unstable at times. The stable version is always the one NicoLauncher installs.
 
 ## Controls
 
