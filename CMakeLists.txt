@@ -234,6 +234,7 @@ add_executable(StarWarsTrilogy WIN32
     src/runtime/gamepad.cpp
     src/runtime/scsi53c810.cpp
     src/runtime/stats.cpp
+    src/runtime/telemetry.cpp
     src/runtime/achievements_csv.cpp
     src/ui/achievement_toast.cpp
     src/runtime/options.cpp
@@ -325,7 +326,7 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MOLTENVK_DYLIB} $<TARGET_FILE_DIR:StarWarsTrilogy>/libMoltenVK.dylib)
 else()
     target_compile_definitions(StarWarsTrilogy PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-    target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static winmm ole32 oleaut32 windowscodecs mfplat mfuuid gdi32 dwmapi shell32 winhttp
+    target_link_libraries(StarWarsTrilogy PRIVATE SDL3::SDL3-static winmm ole32 oleaut32 windowscodecs mfplat mfuuid gdi32 dwmapi shell32 winhttp ws2_32
         ${DLSS_LIB})
 endif()
 

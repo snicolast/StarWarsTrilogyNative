@@ -70,6 +70,10 @@ struct FrontendSettings {
     bool pointer_sight = true; // the sight goes where the mouse / light gun points (false: the mouse is the lever)
     bool check_updates = true;     // at launch, news.txt on GitHub: a window with what is new and UPDATE NOW
     int news_seen = 0;             // the newest news.txt entry the player closed with LATER
+    // OGS-TS telemetry for motion rigs and haptics (runtime/telemetry.h), UDP multicast on this port.
+    // Off by default (the port only in settings.ini)
+    bool telemetry = false;
+    int telemetry_port = 40123;
 
     // save/settings.ini; missing keys keep their current value
     void load(const char* path);

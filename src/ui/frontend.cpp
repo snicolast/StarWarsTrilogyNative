@@ -230,6 +230,8 @@ void FrontendSettings::load(const char* path) {
         else if (k == "sight_size") sight_size = std::clamp(atoi(value) / 10 * 10, 50, 100);
         else if (k == "check_updates") check_updates = on;
         else if (k == "news_seen") news_seen = std::max(0, atoi(value));
+        else if (k == "telemetry") telemetry = on;
+        else if (k == "telemetry_port") telemetry_port = std::clamp(atoi(value), 1, 65535);
     }
     fclose(f);
 }
@@ -261,6 +263,7 @@ void FrontendSettings::save(const char* path) const {
     fprintf(f, "supersample = %d\n", supersample);
 #endif
     fprintf(f, "check_updates = %d\nnews_seen = %d\n", check_updates, news_seen);
+    fprintf(f, "telemetry = %d\ntelemetry_port = %d\n", telemetry, telemetry_port);
     fclose(f);
 }
 
