@@ -393,7 +393,7 @@ const Frontend::OptionTab Frontend::OPTION_TABS[] = {
     {OPT_AO, LIGHTING_TAB}, {OPT_BLOOM, LIGHTING_TAB}, {OPT_EXPLOSIONS, LIGHTING_TAB}, {OPT_HAZE, LIGHTING_TAB},
     {OPT_VOLUME, AUDIO_TAB}, {OPT_MUSIC, AUDIO_TAB}, {OPT_SPEAKERS, AUDIO_TAB}, {OPT_REAR, AUDIO_TAB}, {OPT_SAMPLES, AUDIO_TAB}, {OPT_MENU_MUSIC, AUDIO_TAB},
     {OPT_SIGHT, CONTROLS_TAB}, {OPT_POINTER, CONTROLS_TAB}, {OPT_PAD_AIM, CONTROLS_TAB}, {OPT_PAD_SPEED, CONTROLS_TAB}, {OPT_PAD_INVERT, CONTROLS_TAB}, {OPT_DUEL_INVERT, CONTROLS_TAB}, {OPT_GYRO, CONTROLS_TAB}, {OPT_GYRO_SPEED, CONTROLS_TAB},
-    {OPT_VIBRATION, CONTROLS_TAB}, {OPT_ASSIST, CONTROLS_TAB},
+    {OPT_VIBRATION, CONTROLS_TAB}, {OPT_ASSIST, CONTROLS_TAB}, {OPT_TELEMETRY, CONTROLS_TAB},
 };
 
 const wchar_t* const Frontend::RECORD_TAB_NAMES[Frontend::RECORD_TAB_COUNT] = {L"ACHIEVEMENTS", L"STATS"};
@@ -606,7 +606,10 @@ std::vector<Frontend::Item> Frontend::items() const {
                 {OPT_VIBRATION, L"VIBRATION", BLOOM_LEVELS[settings.vibration],
                  L"The gamepad rumbles when you fire and when you are hit"},
                 {OPT_ASSIST, L"AIM ASSIST", BLOOM_LEVELS[settings.aim_assist],
-                 L"With a gamepad the sight slows down over the enemy ships and follows them a little"}};
+                 L"With a gamepad the sight slows down over the enemy ships and follows them a little"},
+                {OPT_TELEMETRY, L"OPEN GAME STANDARDS TELEMETRY", on_off(settings.telemetry),
+                 L"Sends the craft's motion, the shield, the score and every hit you take (Open Game Standards Telemetry, UDP port " +
+                     std::to_wstring(settings.telemetry_port) + L") to haptics and motion rigs on this PC and your network"}};
         std::vector<Item> list = {{TABS, L"", L"", pad_prompts ? L"Left / Right here, or LB / RB, change the tab"
                                                                : L"Left / Right here, Q / E or L1 / R1 change the tab"}};
         for (const OptionTab& o : OPTION_TABS)   // the tab's options in their order, then any not listed
@@ -755,6 +758,7 @@ void Frontend::activate(const Item& it, int dir) {
         break;
     case OPT_VIBRATION: settings.vibration = (settings.vibration + dir + 4) % 4; push(Action::SettingsChanged); break;
     case OPT_ASSIST: settings.aim_assist = (settings.aim_assist + dir + 4) % 4; push(Action::SettingsChanged); break;
+    case OPT_TELEMETRY: settings.telemetry = !settings.telemetry; push(Action::SettingsChanged); break;
     case OPT_SAT:   // 0..200 % in steps of 10; a click past the top starts again from the bottom
         settings.saturation = dir > 0 && settings.saturation >= 200 && wrap_
                                   ? 0 : std::clamp(settings.saturation + 10 * dir, 0, 200);
