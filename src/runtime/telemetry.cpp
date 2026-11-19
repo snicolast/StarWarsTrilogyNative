@@ -298,6 +298,10 @@ struct Publisher {
         port = 0;
     }
     void send(const std::vector<uint8_t>& d) {
+        if (g_sink) {
+            g_sink(d.data(), d.size());
+            return;
+        }
         if (ok() && !d.empty())
             sendto(sock, reinterpret_cast<const char*>(d.data()), static_cast<int>(d.size()), 0, reinterpret_cast<const sockaddr*>(&to), sizeof to);
     }
@@ -450,11 +454,20 @@ struct Publisher {
     }
 
     bool log = getenv("SWT_TELEMETRY_LOG") != nullptr;
+    static void (*g_sink)(const uint8_t*, size_t);
 };
+
+void (*Publisher::g_sink)(const uint8_t*, size_t) = nullptr;   // tests: where the datagrams go instead of the network
 
 Publisher g_pub;
 
 }  // namespace
+
+void telemetry_test_begin(void (*sink)(const uint8_t*, size_t)) {
+    g_pub.close();
+    g_pub = Publisher{};
+    Publisher::g_sink = sink;
+}
 
 void telemetry_frame(bool on, int port) {
     Publisher& p = g_pub;

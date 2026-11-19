@@ -23,3 +23,6 @@
 
 // Game thread, every vblank (runtime.cpp, after stats_frame)
 void telemetry_frame(bool on, int port);
+
+// Tests (tests/telemetry_test.cpp): forget everything and hand each datagram to `sink` instead of the network
+void telemetry_test_begin(void (*sink)(const uint8_t* data, size_t size));

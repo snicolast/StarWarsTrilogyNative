@@ -352,7 +352,8 @@ endif()
 
 # Unit tests (ctest): the 2D composition against golden hashes, the FNV-1a
 # hash of C++ and Python against the same vectors, the command-line table and
-# the audio queue and the ROM layout read from the zip.
+# the audio queue, the ROM layout read from the zip and the OGS-TS telemetry
+# sender over a fake game RAM.
 # build.bat runs them.
 option(LW_TESTS "Build the unit tests" ON)
 if(LW_TESTS)
@@ -374,8 +375,12 @@ if(LW_TESTS)
     add_executable(achievements_csv_test tests/achievements_csv_test.cpp src/runtime/achievements_csv.cpp src/runtime/disk_writer.cpp)
     target_include_directories(achievements_csv_test PRIVATE ${ICONS_DIR})
     add_executable(disk_writer_test tests/disk_writer_test.cpp src/runtime/disk_writer.cpp)
+    add_executable(telemetry_test tests/telemetry_test.cpp src/runtime/telemetry.cpp)
+    if(WIN32)
+        target_link_libraries(telemetry_test PRIVATE ws2_32)
+    endif()
     foreach(t tilegen_test fnv_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test news_test ${MENU_MUSIC_TEST}
-            achievements_csv_test disk_writer_test)
+            achievements_csv_test disk_writer_test telemetry_test)
         target_include_directories(${t} PRIVATE src/video src/common src/runtime src/audio src/ui ${MINIZ_DIR})
         if(MSVC)
             target_compile_options(${t} PRIVATE /W4 /utf-8)
@@ -396,6 +401,7 @@ if(LW_TESTS)
     add_test(NAME news COMMAND news_test)
     add_test(NAME achievements_csv COMMAND achievements_csv_test)
     add_test(NAME disk_writer COMMAND disk_writer_test)
+    add_test(NAME telemetry COMMAND telemetry_test)
     if(NOT APPLE)
         add_test(NAME menu_music COMMAND menu_music_test)
     endif()
