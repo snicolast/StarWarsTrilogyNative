@@ -1014,6 +1014,8 @@ int main(int argc, char** argv) {
                         shown = ~0ull;   // compose the 2D layer again even while the game stands still
                     }
                     g_opt.show_crosshair = s.crosshair;
+                    g_opt.telemetry = s.telemetry;   // (telemetry_frame opens or closes the socket at the next frame)
+                    g_opt.telemetry_port = s.telemetry_port;
                     if (g_opt.interp != s.smooth) {
                         g_opt.interp = s.smooth;
                         renderer.set_interpolation(1.0f);   // the latest game frame as it is

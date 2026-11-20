@@ -107,6 +107,18 @@ F11 or Alt+Enter toggles fullscreen. Everything else is in **Options**.
   2 second trigger, 3 EVENT, 4 coin, 5 start. Plug the stick in its PC mode.
 - **Invert in duels** (OPTIONS > CONTROLS) turns the aim round in the lightsaber duels only.
 
+## Telemetry (haptics, motion rigs, dashboards)
+
+Off by default. Switch it on in OPTIONS > CONTROLS > OPEN GAME STANDARDS TELEMETRY, or set `telemetry = 1` in
+`save/settings.ini` (and `telemetry_port`, 40123 by default), to send the
+[OGS-TS](https://github.com/Open-Game-Standards/OGS-Telemetry-Standard) stream by UDP multicast (239.255.17.17):
+the shield and the score, the craft (X-wing, snowspeeder, speeder bike, or the lightsaber duels), its position and
+attitude in the flights, and a `body.impact` event every time you are hit, for audio exciters, vests and other
+haptics. Outside a game the stream stays up with `session.paused` set. Read from the game's memory, no mod needed.
+
+The motion is sent while you fly, not in the cinematics (the opening of each stage and the scenes between the
+phases), and the lightsaber duels send none yet, so a motion platform stays at rest there.
+
 ## More
 
 - Other recompiled arcade games: [The Lost World](https://github.com/snicolast/LostWorldNative)

@@ -46,6 +46,8 @@ struct Options {
     bool sun = true;                 // --no-sun: no sun in the procedural sky
     bool show_crosshair = true;      // menu option; the C key toggles it
     bool explosions = true;          // --explosions arcade|enhanced: Star Wars Trilogy's new fireballs, sparks and debris (Yavin)
+    bool telemetry = false;          // OGS-TS telemetry for motion rigs and haptics (settings.ini telemetry = 1; telemetry.h)
+    int telemetry_port = 40123;
     // Sound
     float volume = 5.0f;             // --volume: output gain
     float music = 5.0f;              // --music: the music board's gain

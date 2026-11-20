@@ -70,6 +70,10 @@ struct FrontendSettings {
     bool pointer_sight = true; // the sight goes where the mouse / light gun points (false: the mouse is the lever)
     bool check_updates = true;     // at launch, news.txt on GitHub: a window with what is new and UPDATE NOW
     int news_seen = 0;             // the newest news.txt entry the player closed with LATER
+    // OGS-TS telemetry for motion rigs and haptics (runtime/telemetry.h), UDP multicast on this port.
+    // Off by default; OPTIONS > CONTROLS > OPEN GAME STANDARDS TELEMETRY (the port only in settings.ini)
+    bool telemetry = false;
+    int telemetry_port = 40123;
 
     // save/settings.ini; missing keys keep their current value
     void load(const char* path);
@@ -140,7 +144,7 @@ private:
         RECORDS, DEBUG, DEBUG_STAGE, DEBUG_PHASE,
         OPT_QUALITY, OPT_DISPLAY, OPT_VOLUME, OPT_MUSIC, OPT_SPEAKERS, OPT_REAR, OPT_SAMPLES, OPT_AA, OPT_HAZE, OPT_BLOOM, OPT_AO, OPT_SKY, OPT_SUN, OPT_SHADOWS, OPT_SHAFTS, OPT_SOFT, OPT_HDR, OPT_RELIEF, OPT_SHARPEN, OPT_TEXT, OPT_CROSS, OPT_MICE,
         OPT_SAT, OPT_GAMMA, OPT_MOTION, OPT_PAD_SPEED, OPT_GYRO, OPT_GYRO_SPEED, OPT_VIBRATION, OPT_ASSIST, OPT_RT, OPT_MENU_MUSIC, EXTRA, DOGFIGHT, OPT_POINTER, OPT_SIGHT, OPT_PAD_AIM, OPT_PAD_INVERT, OPT_DUEL_INVERT, OPT_UPDATES, OPT_SCALE,
-        OPT_ASPECT, OPT_EXPLOSIONS,
+        OPT_ASPECT, OPT_EXPLOSIONS, OPT_TELEMETRY,
     };
     struct Item {
         Id id;

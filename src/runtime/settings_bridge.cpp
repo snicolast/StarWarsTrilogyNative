@@ -48,6 +48,8 @@ void options_from_settings(Options& o, const FrontendSettings& ini) {
     o.sharpen = ini.sharpen;
     o.classic_text = !ini.hd_text;
     o.show_crosshair = ini.crosshair;
+    o.telemetry = ini.telemetry;
+    o.telemetry_port = ini.telemetry_port;
     o.interp = ini.smooth;
     o.several_mice = ini.second_mouse;
     o.saturation = ini.saturation / 100.0f;
@@ -84,6 +86,8 @@ void settings_from_options(FrontendSettings& s, const Options& o) {
     s.sharpen = o.sharpen;
     s.hd_text = !o.classic_text;
     s.crosshair = o.show_crosshair;
+    s.telemetry = o.telemetry;
+    s.telemetry_port = o.telemetry_port;
     s.smooth = o.interp;
     s.second_mouse = o.several_mice;
     s.saturation = std::clamp(int(o.saturation * 100 + 0.5f), 0, 200);
