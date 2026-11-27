@@ -65,14 +65,21 @@ the game stops at *FAILED FEEDBACK LEVER INITIALIZE*. `build.bat` says which chi
 
 ## Install
 
+<p align="center">
+  <a href="https://github.com/snicolast/NicoLauncher-Hub"><img src="docs/img/nicolauncher.png" alt="NicoLauncher" width="480"></a>
+</p>
+
 You need Windows 10/11 (64-bit) and a GPU with a Vulkan 1.3 driver (most from 2016 on).
 DLAA and DLSS need an NVIDIA RTX; on other cards ANTI-ALIASING offers FXAA instead, and the game builds the same on any GPU.
 
 Install it with **[NicoLauncher](https://github.com/snicolast/NicoLauncher-Hub)**, a free app that
 downloads, builds, updates and starts the game for you. No Visual Studio, nothing to set up by hand.
 
-1. Download **[NicoLauncher-setup.exe](https://github.com/snicolast/NicoLauncher-Hub/releases/latest)** and run it.
-2. In the launcher, open **Star Wars Trilogy**, press **Install** and choose your `swtrilgy.zip` when it asks.
+1. Download NicoLauncher, either one:
+   - **[NicoLauncher-setup.exe](https://github.com/snicolast/NicoLauncher-Hub/releases/latest/download/NicoLauncher-setup.exe)**, the installer: run it.
+   - **[NicoLauncher-portable.zip](https://github.com/snicolast/NicoLauncher-Hub/releases/latest/download/NicoLauncher-portable.zip)**, everything in one folder: unzip it anywhere and run `NicoLauncher.exe`
+     ([portable mode](https://github.com/snicolast/NicoLauncher-Hub/blob/main/docs/portable.md)).
+2. In the launcher, open **Nico SWT**, press **Install** and choose your `swtrilgy.zip` when it asks.
 3. Press **Play**.
 
 On a Mac with Apple silicon, see [docs/MACOS.md](docs/MACOS.md); on Linux (x86_64 or arm64, Raspberry Pi 5 too),
