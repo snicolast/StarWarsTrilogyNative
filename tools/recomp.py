@@ -39,6 +39,12 @@ AIM_MULS = {0x0007C8C8: 0, 0x0007C8BC: 1}   # address: axis (0 = yaw from x * 28
 #   0x2260E0/E2) by 0.647 (x) and 0.490 (y); the runtime widens x and adds the
 #   lever's precision (rt_ground_aim)
 GROUND_AIM_MULS = {0x00053FB4: 0, 0x00053FEC: 1}
+# - BASE_AIM_MULS: in Hoth's base (the tunnels and the hangar, on foot)
+#   fn_000E2998 places the sight itself: the lever's signed bytes (0x22153C/D)
+#   times 244.8 / 128 (x, negated) and 188.8 / 128 (y), from 0x23B618 +0x4C
+#   / +0x50, at 128 units ahead; the multiplier is the instruction's frC.
+#   Widened and made finer as on the snow (rt_base_aim)
+BASE_AIM_MULS = {0x000E2A3C: 0, 0x000E2A38: 1}
 
 
 def mask(mb, me):
@@ -127,6 +133,10 @@ class FuncGen:
             if a in GROUND_AIM_MULS:
                 fd = (self.body[a].word >> 21) & 31
                 code[a] = code[a] + [f"c.f[{fd}].d = rt_ground_aim({GROUND_AIM_MULS[a]}, c.f[{fd}].d);"]
+            if a in BASE_AIM_MULS:
+                w = self.body[a].word
+                fd, fc = (w >> 21) & 31, (w >> 6) & 31
+                code[a] = code[a] + [f"c.f[{fd}].d = rt_base_aim({BASE_AIM_MULS[a]}, c.f[{fd}].d, c.f[{fc}].d);"]
         # The labels in use are now known
         out.append(f"void fn_{self.entry:08X}(Ctx& c) {{")
         out.append(f"    ENTER(0x{self.entry:08X});")

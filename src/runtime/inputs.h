@@ -69,6 +69,7 @@ PlayerAim player_aim(int player);
 // is from the 0..255 step the game reads (-0.5..0.5; 0 at the ends or when
 // something else set the lever)
 float lever_fraction(int axis);
+double sight_reach(int axis);   // how much farther the sight goes at full tilt, drawn smaller (aim_hooks.cpp)
 extern std::atomic<bool> g_fixed_aim;    // --aim: the ADC values stay fixed
 
 // Which player a pad controls (0 or 1), given the connected pads as a bit
