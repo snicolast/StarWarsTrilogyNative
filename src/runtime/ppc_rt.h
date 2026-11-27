@@ -80,6 +80,7 @@ void rt_bad(Ctx& c, uint32_t addr);           // invalid instruction
 void rt_sc(Ctx& c, uint32_t addr);            // sc
 uint32_t rt_aim_angle(int axis, uint32_t a); // sight yaw (0) / pitch (1) from the lever: finer, yaw widened
 double rt_ground_aim(int axis, double v);     // sight x (0) / y (1) on the ground from the lever: finer, x widened
+double rt_base_aim(int axis, double v, double mul);   // the same in Hoth's base (mul: the game's multiplier)
 uint32_t rt_mfspr(Ctx& c, uint32_t spr);      // SPRs with side effects (DEC, TB)
 void rt_mtspr(Ctx& c, uint32_t spr, uint32_t v);
 void rt_mtmsr(Ctx& c, uint32_t v);

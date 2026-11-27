@@ -21,6 +21,7 @@
 #include "../video/tilegen.h"
 
 #include "app_internal.h"
+#include "ppc_rt.h"
 #include "env_switches.h"
 
 // Keyboard and mouse (only while the window is active):
@@ -123,61 +124,136 @@ struct SceneTargets {
     std::vector<std::array<float, 3>> enemies;   // x, y, half size
     float sight_x = 0, sight_y = 0;
     bool sight = false;
+    int kind = 0;   // which sight: 0 space (turned by the lever, 1000 units away), 1 the snow's, 2 Hoth base's
     float lever_x = 0.5f, lever_y = 0.5f;   // player 1's aim (lever 0..1) when the frame was made
     uint32_t serial = 0;                    // one more each game frame
 };
 static std::mutex g_scene_targets_mutex;
 static SceneTargets g_scene_targets;
 
+// The lever's curve: set_player_aim's 0..255 goes through the game's
+// calibration (struct 0x221520: x max +0x10, min +0x12, centre +0x14; y the
+// odd bytes) and its table (pointer at +0x08 / +0x0C, one 256-byte table of
+// signed steps in ROM at 0x1884A8 for both axes: a dead zone of 11 in the
+// middle, gentle near it and at the ends, steeper between), and the sight
+// moves with the step. Here: the step for each lever value, negated so it
+// grows with the lever (-127..128); false while the game has not set it up
+static bool lever_steps(int axis, float (&out)[256]) {
+    const uint32_t cal = 0x221520;
+    uint32_t table = rd32(cal + (axis ? 0x0C : 0x08));
+    if (table == 0 || table > RAM_SIZE - 256) return false;
+    int hi = rd8(cal + 0x10 + axis), lo = rd8(cal + 0x12 + axis), c = rd8(cal + 0x14 + axis);
+    if (!(lo < c && c < hi)) return false;
+    for (int v = 0; v < 256; v++) {   // fn_00004120
+        int idx = v < c ? (std::max(v, lo) - lo) * 127 / (c - lo) : (std::min(v, hi) - c) * 127 / (hi - c) + 128;
+        out[v] = -float(int8_t(rd8(table + uint32_t(idx))));
+        if (v > 0 && out[v] < out[v - 1]) return false;   // not the table expected
+    }
+    return true;
+}
+
+// The lever (0..1) that puts the step at `step` (-127..128), the curve read backwards
+static float lever_for_step(const float (&steps)[256], float step) {
+    if (step <= steps[0]) return 0.0f;
+    if (step >= steps[255]) return 1.0f;
+    int a = 0, b = 255;   // the last value below the step, the first above it
+    while (a < 255 && steps[a + 1] < step) a++;
+    while (b > 0 && steps[b - 1] > step) b--;
+    float v = b - a <= 1 ? float(a) + (step - steps[a]) / std::max(steps[b] - steps[a], 1e-3f)
+              : a < 128 && b > 128 ? 128.0f              // the dead zone: the lever's middle
+                                   : 0.5f * float(a + b);   // another flat run: its middle
+    return std::clamp(0.5f + (v - 128.0f) / 255.0f, 0.0f, 1.0f);   // set_player_aim's 128 + (x - 0.5) * 255
+}
+
 // The pointer at game pixels gx, gy (Model 3 pixels from the 4:3 area's
 // corner; beyond 0..496 in the wider view) -> the lever (0..1) that puts the
-// game's sight there. The lever moves the sight over about 1/1.2 of the view
-// (the model); what the sight's real place differs from the model's (the
-// game's angles, the stage) is measured on each frame the sight is found and
-// taken off, so it ends right under the pointer. Without the sight (a
-// cutscene, a stage where it is not found) the model alone aims
+// game's sight there (a light gun such as a Sinden shoots where it points).
+// The model: at full tilt the sight is `reach` pixels from the middle; on
+// the ground (Hoth, Endor) it moves with the lever's step, reaching the
+// sides of the view (the snow; Hoth base's goes 244.8 / 248 of it, 188.8 /
+// 192 down: fn_000E2998's multipliers; measured, within 2 px); in space
+// its yaw and pitch do (28 and 21 per step, 0x10000 = 360 degrees) through a
+// projection of 22.5 degrees each side (x; y measured: tan 0.314), short of
+// the edges (Yavin measured, within 2 px). x spans the widened view (the hooks widen the sight with it).
+// What the real sight differs from it (other stages, the camera) is measured
+// on the frames it is found, once the pointer holds still (it trails the
+// lever), as a gain away from the middle and an offset near it, both kept
+// within a share of the reach so a wrong reading cannot throw the sight
+// across a wide screen (issue #150: fixed pixel limits, too small at 21:9).
+// Without the sight (a cutscene) the model alone aims
 void pointer_sight(float gx, float gy, float& fx, float& fy) {
-    constexpr float K = 1.2f;
-    static float bias_x = 0, bias_y = 0;   // the sight's place minus the model's, in game pixels
+    struct Axis { float gain = 1, bias = 0; };
+    static Axis axes[2];
+    static int kind = 0;   // the last sight found (SceneTargets::kind)
     static uint32_t serial = 0;
     static double seen_at = 0;
     SceneTargets t;
     {
         std::lock_guard<std::mutex> lock(g_scene_targets_mutex);
-        t.sight = g_scene_targets.sight;
+        t.sight = g_scene_targets.sight, t.kind = g_scene_targets.kind;
         t.sight_x = g_scene_targets.sight_x, t.sight_y = g_scene_targets.sight_y;
         t.lever_x = g_scene_targets.lever_x, t.lever_y = g_scene_targets.lever_y;
         t.serial = g_scene_targets.serial;
     }
+    if (t.sight) kind = t.kind;
+    const bool angular = kind == 0;
     const float wide = std::clamp(g_wide_applied.load(), 1.0f, 3.0f);
-    const float span_x = SCREEN_W * wide / K, span_y = SCREEN_H / K;   // the sight's travel over the lever's
+    constexpr double UNIT = 6.283185307179586 / 65536.0;
+    const double tan_max[2] = {std::tan(128 * 28 * UNIT), std::tan(128 * 21 * UNIT)};
+    const double tan_view[2] = {0.41421356, 0.314};
+    float steps[2][256];
+    for (int a = 0; a < 2; a++)
+        if (!lever_steps(a, steps[a]))
+            for (int v = 0; v < 256; v++) steps[a][v] = float(v - 128);   // straight until the game sets its table up
+    // The sight's distance from the middle (pixels) at a step, without the
+    // measured gain, and its inverse
+    auto reach = [&](int a) {
+        float r = float((a ? SCREEN_H : SCREEN_W * wide) / 2 * sight_reach(a));
+        if (kind == 2) r *= a ? 188.8f / 192 : 244.8f / 248;
+        return angular ? float(r * tan_max[a] / tan_view[a]) : r;
+    };
+    auto offset_at = [&](int a, float step) {
+        float u = std::clamp(step / 128.0f, -1.0f, 1.0f);
+        return reach(a) * (angular ? float(std::tan(u * std::atan(tan_max[a])) / tan_max[a]) : u);
+    };
+    auto step_for = [&](int a, float offset) {
+        float u = std::clamp(offset / reach(a), -1.0f, 1.0f);
+        return 128.0f * (angular ? float(std::atan(u * tan_max[a]) / std::atan(tan_max[a])) : u);
+    };
+    auto step_at = [&](int a, float lever) {   // the step the lever gave
+        float v = std::clamp(128 + (lever - 0.5f) * 255, 0.0f, 255.0f);
+        int i = std::min(int(v), 254);
+        return steps[a][i] + (v - i) * (steps[a][i + 1] - steps[a][i]);
+    };
     double now = qpc_seconds();
-    // The game's sight trails the lever while it moves, so it is measured only
-    // once the pointer has held still for a moment, and the correction kept
-    // small: a wrong reading (another model taken for the sight) cannot throw
-    // the sight across the screen
     static float last_fx = -1, last_fy = -1;
     static double still_since = 0;
     if (t.serial != serial) {
         serial = t.serial;
-        if (t.sight && now - still_since > 0.2) {
-            float mx = SCREEN_W / 2 + (t.lever_x - 0.5f) * span_x, my = SCREEN_H / 2 + (t.lever_y - 0.5f) * span_y;
-            float ex = t.sight_x - mx, ey = t.sight_y - my;
-            // A dead band of a few pixels and a slow gain: the lever also moves
-            // the ship (in the trench the whole view), so a correction that
-            // never rests would shake the picture
-            float dx = ex - bias_x, dy = ey - bias_y;
-            if (std::fabs(dx) < 40 && std::fabs(dy) < 40) {
-                if (std::fabs(dx) > 3) bias_x = std::clamp(bias_x + 0.12f * dx, -32.0f, 32.0f);
-                if (std::fabs(dy) > 3) bias_y = std::clamp(bias_y + 0.12f * dy, -32.0f, 32.0f);
+        if (t.sight && now - still_since > 0.25) {
+            const float lever[2] = {t.lever_x, t.lever_y}, seen[2] = {t.sight_x - SCREEN_W / 2, t.sight_y - SCREEN_H / 2};
+            for (int a = 0; a < 2; a++) {
+                Axis& ax = axes[a];
+                float r = reach(a), model = offset_at(a, step_at(a, lever[a]));
+                float e = seen[a] - (ax.bias + ax.gain * model);
+                // Small steps, a dead band (the lever also moves the ship, in
+                // the trench the whole view: a correction that never rests
+                // would shake the picture), readings far off left out
+                if (std::fabs(e) < 2.0f || std::fabs(e) > 0.2f * r) continue;
+                if (std::fabs(model) > 0.3f * r)
+                    ax.gain = std::clamp(ax.gain + 0.12f * e / model, 0.8f, 1.25f);
+                else
+                    ax.bias = std::clamp(ax.bias + 0.12f * e, -0.08f * r, 0.08f * r);
             }
             seen_at = now;
         } else if (!t.sight && now - seen_at > 1.0) {   // no sight for a while: back to the model
-            bias_x *= 0.95f, bias_y *= 0.95f;
+            for (Axis& ax : axes) ax.bias *= 0.95f, ax.gain += (1.0f - ax.gain) * 0.05f;
         }
     }
-    fx = std::clamp(0.5f + (gx - bias_x - SCREEN_W / 2) / span_x, 0.0f, 1.0f);
-    fy = std::clamp(0.5f + (gy - bias_y - SCREEN_H / 2) / span_y, 0.0f, 1.0f);
+    const float want[2] = {gx - SCREEN_W / 2, gy - SCREEN_H / 2};
+    float f[2];
+    for (int a = 0; a < 2; a++) f[a] = lever_for_step(steps[a], step_for(a, (want[a] - axes[a].bias) / axes[a].gain));
+    fx = f[0], fy = f[1];
     if (std::fabs(fx - last_fx) > 0.004f || std::fabs(fy - last_fy) > 0.004f) {
         still_since = now;
         last_fx = fx, last_fy = fy;
@@ -186,8 +262,9 @@ void pointer_sight(float gx, float gy, float& fx, float& fy) {
     static double logged = 0;
     if (log && now - logged > 0.25) {
         logged = now;
-        printf("[gun] pointer %.1f %.1f  sight %s %.1f %.1f  bias %.1f %.1f  lever %.3f %.3f\n", gx, gy, t.sight ? "yes" : "no",
-               t.sight_x, t.sight_y, bias_x, bias_y, fx, fy);
+        printf("[gun] pointer %.1f %.1f  sight %s%s %.1f %.1f  gain %.3f %.3f  bias %.1f %.1f  lever %.3f %.3f\n", gx, gy,
+               t.sight ? "yes" : "no", angular ? " (space)" : "", t.sight_x, t.sight_y, axes[0].gain, axes[1].gain, axes[0].bias,
+               axes[1].bias, fx, fy);
     }
 }
 
@@ -230,19 +307,25 @@ void collect_scene_targets(const R3DSceneBuilder& builder, R3DScene& scene) {
             if (cw < 1.0f) continue;
             float sx = v.x + ((m[0] * p[0] + m[8] * p[2]) / cw + 1) / 2 * v.w;
             float sy = v.y + ((m[5] * p[1] + m[9] * p[2]) / cw + 1) / 2 * v.h;
-            // The game's sight: 1000 units in front of the camera in the top
-            // viewport in space, 200 units in a viewport under the HUD on the
-            // snow, 128 in the top viewport in Hoth's base
+            // The game's sight: 1000 units from the camera in the top
+            // viewport in space (turned with the lever's yaw and pitch: its
+            // depth alone falls short of 1000 away from the middle), 200
+            // units ahead in a viewport under the HUD on the snow, 128 ahead
+            // in the top viewport in Hoth's base (moved sideways there)
             // (never in the world or beside it: a piece of the Death Star's
             // trench 1000 units ahead was once taken for it)
             auto at = [&](float d, float tol) { return std::fabs(p[2] + d) < tol; };
-            auto sight_depth = [&](float tol) { return at(1000, tol) || (ground && (at(200, tol) || at(128, tol))); };
+            const float dist = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+            auto sight_depth = [&](float tol) {
+                return (p[2] < 0 && std::fabs(dist - 1000) < tol) || (ground && (at(200, tol) || at(128, tol)));
+            };
             // (its other looks too, near it in its viewport: when a shot hits,
             // yellow and red rings are drawn with it, made smaller as well)
             bool hud = v.priority > low && !v.world && !v.shares_world;
             if (hud && in.polygons >= 4 && sight_depth(40.0f)) sight_parts.push_back({in.model, sx, sy, &v});
             if (hud && in.polygons >= 30 && !t.sight && sight_depth(2.0f)) {
                 t.sight_x = sx, t.sight_y = sy, t.sight = true;
+                t.kind = std::fabs(dist - 1000) < 2.0f ? 0 : at(128, 2.0f) ? 2 : 1;
                 sight_vp = &v;
             } else if (space && !(v.world && !v.space) && v.priority < top && in.polygons >= 100 && sx > -SCREEN_W && sx < 2 * SCREEN_W &&
                        sy > -SCREEN_H && sy < 2 * SCREEN_H) {
