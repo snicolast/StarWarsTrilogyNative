@@ -11,6 +11,10 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[28] 2026-11-27
+- Hoth base (the tunnels and the hangar): in widescreen the sight now reaches the sides of the screen, with the mouse, a light gun or a pad, as on the snow
+- Mouse and light gun: the sight lands right under the pointer across the whole screen, in every stage and at any WIDESCREEN setting
+
 [27] 2026-11-26
 - PLAY now shows a LOADING screen while the game gets ready. Esc, or B / BACK on the pad, goes back to the main menu while it loads, and the next PLAY then starts at once
 - Laser shots, lightsabers, engines and fire no longer cast sun shadows
