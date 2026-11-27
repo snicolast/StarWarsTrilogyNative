@@ -583,6 +583,7 @@ int main(int argc, char** argv) {
         }
         FrontendSettings pc = frontend.other;   // with EXPERIENCE as it is now
         pc.experience = s.experience;
+        pc.telemetry = s.telemetry;   // a key of the whole game
         FrontendSettings::save("save/settings.ini", pc, s);
     };
     auto close_menu = [&] {

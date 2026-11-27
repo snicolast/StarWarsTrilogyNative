@@ -61,6 +61,9 @@ struct FrontendSettings {
     // experience keeps its own settings: PC EDITION's at the top of the file, ARCADE
     // ORIGINAL's in its [arcade] section
     int experience = 0;
+    // OGS-TS telemetry for motion rigs and haptics (runtime/telemetry.h). Off by default
+    // (OPTIONS > EXPERIENCE > TELEMETRY); a key of the whole game, so in the file's first section only
+    bool telemetry = false;
 
     // save/settings.ini; missing keys keep their current value. section: "" the
     // file's first one (PC EDITION and the keys of the whole game), "arcade" ARCADE ORIGINAL's

@@ -32,9 +32,13 @@
 #include "../audio/audio_out.h"
 #include "../audio/sound_board.h"
 #include "../video/r3d_state.h"
+#include "options.h"
 #include "stats.h"
 #include "env_switches.h"
 #include "game_flow.h"
+#include "telemetry.h"
+
+extern Options g_opt;   // app.cpp: command line and menu settings
 
 Ctx g_ctx;
 uint8_t* g_ram;
@@ -1061,6 +1065,7 @@ void rt_event(Ctx& c) {
             attract_guard_frame();   // before the frame's picture is taken
             g_in_attract = in_attract();
             stats_frame();
+            telemetry_frame(g_opt.telemetry);
             video_snapshot();
             bool boot_done = g_arcade_entry ? arcade_entry_frame() : (g_frame % 4 == 0 && boot_logo_up()) || g_frame > 3000;
             if (g_boot_skip && boot_done) {

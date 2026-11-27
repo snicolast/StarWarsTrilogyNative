@@ -30,7 +30,7 @@ void FrontendSettings::load(const char* path, const char* section) {
         std::string k = key, v = value;
         bool on = v == "1" || v == "on" || v == "true";
         // (the keys of the whole game only in the first section)
-        if (!top && k == "experience") continue;
+        if (!top && (k == "experience" || k == "telemetry")) continue;
         if (k == "experience") experience = v == "arcade" ? 1 : 0;
         else if (k == "fullscreen") old_fullscreen = on;
         else if (k == "display_mode") display_mode = v == "fullscreen" ? 2 : v == "borderless" ? 1 : 0, mode_saved = true;
@@ -85,6 +85,7 @@ void FrontendSettings::load(const char* path, const char* section) {
         else if (k == "pad_invert") pad_invert = v == "x" ? 1 : v == "y" ? 2 : v == "both" ? 3 : 0;
         else if (k == "duel_invert") duel_invert = v == "x" ? 1 : v == "y" ? 2 : v == "both" ? 3 : 0;
         else if (k == "sight_size") sight_size = std::clamp(atoi(value) / 10 * 10, 50, 100);
+        else if (k == "telemetry") telemetry = on;
     }
     if (!mode_saved && old_fullscreen >= 0) display_mode = old_fullscreen;
     fclose(f);
@@ -124,6 +125,7 @@ std::string FrontendSettings::text(bool section) const {
              INVERT[duel_invert], ASPECT_WORDS[std::clamp(aspect, 0, ASPECT_COUNT - 1)], explosions ? "enhanced" : "arcade",
              trigger_rumble, render_scale);
     out += buf;
+    if (!section) out += telemetry ? "telemetry = 1\n" : "telemetry = 0\n";
     return out;
 }
 

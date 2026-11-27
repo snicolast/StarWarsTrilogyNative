@@ -43,7 +43,7 @@ jobs:
           echo 'set(GEN_SOURCES "")' > build/gen/files.cmake
           cmake -S . -B build/cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
       - name: Build what does not need the ROM
-        run: cmake --build build/cmake --target shaders m68kmake tilegen_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test achievements_csv_test disk_writer_test
+        run: cmake --build build/cmake --target shaders m68kmake tilegen_test options_test audio_stream_test rom_zip_test jtag_test r3d_state_test achievements_csv_test disk_writer_test telemetry_test
       - name: Test
         run: ctest --test-dir build/cmake --output-on-failure
       - name: Compile the game's own files

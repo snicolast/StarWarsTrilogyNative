@@ -52,6 +52,7 @@ void live_options_from_settings(Options& o, const FrontendSettings& ini) {
     o.interp = ini.smooth;
     o.saturation = ini.saturation / 100.0f;
     o.gamma = ini.gamma / 100.0f;
+    o.telemetry = ini.telemetry;   // (telemetry_frame opens or closes the socket at the next frame)
 }
 
 void settings_from_options(FrontendSettings& s, const Options& o) {
@@ -80,4 +81,5 @@ void settings_from_options(FrontendSettings& s, const Options& o) {
     s.smooth = o.interp;
     s.saturation = std::clamp(int(o.saturation * 100 + 0.5f), 0, 200);
     s.gamma = std::clamp(int(o.gamma * 100 + 0.5f), 50, 150);
+    s.telemetry = o.telemetry;
 }
