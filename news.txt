@@ -11,6 +11,9 @@
 #   # ...          a comment, never shown
 # Newest entry at the top. Keep each one short: about ten lines fit.
 
+[29] 2026-11-28
+- New TELEMETRY option (OPTIONS > EXPERIENCE > EXPERIMENTAL) for motion rigs and haptics: the craft's motion in the flights, the shield, the score and every hit, in the OGS-TS format (Open Game Standards), thanks to Brian Gilbert. Not tested on a real rig yet
+
 [28] 2026-11-27
 - Hoth base (the tunnels and the hangar): in widescreen the sight now reaches the sides of the screen, with the mouse, a light gun or a pad, as on the snow
 - Mouse and light gun: the sight lands right under the pointer across the whole screen, in every stage and at any WIDESCREEN setting

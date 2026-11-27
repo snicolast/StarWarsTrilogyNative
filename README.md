@@ -109,6 +109,14 @@ exclusive fullscreen at the **Resolution** you pick). Everything else is in **Op
   2 second trigger, 3 EVENT, 4 coin, 5 start. Plug the stick in its PC mode.
 - **Invert in duels** (OPTIONS > CONTROLS) turns the aim round in the lightsaber duels only.
 
+## Experimental
+
+Untested on real hardware. Feedback welcome in the issues.
+
+- **Telemetry** (OPTIONS > EXPERIENCE > EXPERIMENTAL): sends the craft's motion in the flights, the shield, the score
+  and every hit, for a motion rig or haptics. [OGS-TS](https://github.com/Open-Game-Standards/OGS-Telemetry-Standard) format,
+  multicast `239.255.17.17:40123`. Thanks to Brian Gilbert.
+
 ## More
 
 - Other recompiled arcade games: [The Lost World](https://github.com/snicolast/LostWorldNative)
